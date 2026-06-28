@@ -9,6 +9,10 @@ static volatile char g_uart2_rx_buffer[UART2_RX_BUFFER_SIZE];
 static volatile uint16_t g_uart2_rx_head = 0U;
 static volatile uint16_t g_uart2_rx_tail = 0U;
 
+#if VISION_UART_USE_USART1
+#error "VISION_UART_USE_USART1 is reserved: USART1_TX PA9 conflicts with TIM1_CH2 left motor PWM on current hardware."
+#endif
+
 static void uart_gpio_init(void)
 {
     GPIO_InitTypeDef gpio;
@@ -58,7 +62,7 @@ void BSP_UART_Init(void)
     NVIC_Init(&nvic);
 }
 
-void BSP_UART1_SendChar(char ch)
+void BSP_DebugUART_SendChar(char ch)
 {
     while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET)
     {
@@ -67,31 +71,47 @@ void BSP_UART1_SendChar(char ch)
     USART_SendData(USART2, (uint16_t)ch);
 }
 
-void BSP_UART1_SendString(const char *str)
+void BSP_DebugUART_SendString(const char *str)
 {
     if (str == 0) return;
     while (*str != '\0')
     {
-        BSP_UART1_SendChar(*str++);
+        BSP_DebugUART_SendChar(*str++);
     }
+}
+
+void BSP_DebugUART_SendInt(const char *name, int32_t value)
+{
+    char buf[48];
+    (void)snprintf(buf, sizeof(buf), "%s=%ld\r\n", name, (long)value);
+    BSP_DebugUART_SendString(buf);
+}
+
+void BSP_UART1_SendChar(char ch)
+{
+    /* 兼容旧接口名：当前调试串口实际是 USART2。新代码优先使用 BSP_DebugUART_*。 */
+    BSP_DebugUART_SendChar(ch);
+}
+
+void BSP_UART1_SendString(const char *str)
+{
+    BSP_DebugUART_SendString(str);
 }
 
 void BSP_UART1_SendInt(const char *name, int32_t value)
 {
-    char buf[48];
-    (void)snprintf(buf, sizeof(buf), "%s=%ld\r\n", name, (long)value);
-    BSP_UART1_SendString(buf);
+    BSP_DebugUART_SendInt(name, value);
 }
 
 void BSP_VisionUART_SendChar(char ch)
 {
-    /* 本版不启用视觉通信，保留接口用于后续移植。 */
-    BSP_UART1_SendChar(ch);
+    /* 本版不启用独立视觉串口，接口临时复用 USART2 调试通道。 */
+    BSP_DebugUART_SendChar(ch);
 }
 
 void BSP_VisionUART_SendString(const char *str)
 {
-    BSP_UART1_SendString(str);
+    BSP_DebugUART_SendString(str);
 }
 
 int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
@@ -130,8 +150,15 @@ int _write(int file, char *ptr, int len)
     (void)file;
     for (i = 0; i < len; ++i)
     {
-        BSP_UART1_SendChar(ptr[i]);
+        BSP_DebugUART_SendChar(ptr[i]);
     }
     return len;
 }
 #endif
+
+int fputc(int ch, FILE *f)
+{
+    (void)f;
+    BSP_DebugUART_SendChar((char)ch);
+    return ch;
+}

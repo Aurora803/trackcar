@@ -8,6 +8,12 @@ extern "C" {
 #endif
 
 void BSP_UART_Init(void);
+
+void BSP_DebugUART_SendChar(char ch);
+void BSP_DebugUART_SendString(const char *str);
+void BSP_DebugUART_SendInt(const char *name, int32_t value);
+
+/* 兼容旧命名：历史上函数名保留了 UART1，但当前硬件实际使用 USART2(PA2/PA3)。 */
 void BSP_UART1_SendChar(char ch);
 void BSP_UART1_SendString(const char *str);
 void BSP_UART1_SendInt(const char *name, int32_t value);

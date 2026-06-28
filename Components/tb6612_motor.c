@@ -43,7 +43,7 @@ void TB6612_Init(void)
 
 void TB6612_SetSpeedPermille(motor_channel_t channel, int16_t speed_permille)
 {
-    int16_t speed = clamp_i16(speed_permille, -1000, 1000);
+    int16_t speed = clamp_i16(speed_permille, -MOTOR_PWM_MAX_PERMILLE, MOTOR_PWM_MAX_PERMILLE);
     int16_t duty;
 
     if (channel == MOTOR_CHANNEL_LEFT)
@@ -72,13 +72,13 @@ void TB6612_Brake(motor_channel_t channel)
     {
         BSP_GPIO_Write(AIN1_PIN, 1U);
         BSP_GPIO_Write(AIN2_PIN, 1U);
-        BSP_PWM_SetMotorDutyPermille(MOTOR_LEFT_PWM_CHANNEL, 1000);
+        BSP_PWM_SetMotorDutyPermille(MOTOR_LEFT_PWM_CHANNEL, MOTOR_PWM_MAX_PERMILLE);
     }
     else
     {
         BSP_GPIO_Write(BIN1_PIN, 1U);
         BSP_GPIO_Write(BIN2_PIN, 1U);
-        BSP_PWM_SetMotorDutyPermille(MOTOR_RIGHT_PWM_CHANNEL, 1000);
+        BSP_PWM_SetMotorDutyPermille(MOTOR_RIGHT_PWM_CHANNEL, MOTOR_PWM_MAX_PERMILLE);
     }
 }
 

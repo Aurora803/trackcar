@@ -19,6 +19,7 @@ extern "C" {
 /* ===================== 电机与驱动参数 ===================== */
 #define MOTOR_PWM_FREQ_HZ              1000U
 #define MOTOR_PWM_MAX_PERMILLE         1000
+#define CHASSIS_PWM_LIMIT              750
 #define MOTOR_LEFT_INVERT              1  /* 按接线图方向表：左电机前进 AIN1=0/AIN2=1 */
 #define MOTOR_RIGHT_INVERT             0
 
@@ -71,6 +72,7 @@ extern "C" {
 #define LINE_CORNER_MIN_MS             90U
 #define LINE_CORNER_TIMEOUT_MS         700U
 #define LINE_CORNER_ENCODER_TARGET     380
+#define LINE_CORNER_DEBOUNCE_COUNT     2U  /* 连续检测到同向直角特征后才切入转角状态。 */
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   450
@@ -96,7 +98,7 @@ extern "C" {
 
 /* ===================== 循迹 PID 初值 ===================== */
 #define LINE_BASE_PWM                  LINE_BASE_PWM_MID
-#define LINE_PWM_LIMIT                 750
+#define LINE_PWM_LIMIT                 CHASSIS_PWM_LIMIT
 #define LINE_PID_KP                    0.22f
 #define LINE_PID_KI                    0.00f
 #define LINE_PID_KD                    0.006f

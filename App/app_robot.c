@@ -7,6 +7,12 @@
 #include "yahboom_tracker8_io.h"
 #include "chassis.h"
 #include "app_line_follow.h"
+#if APP_ENABLE_VISION_TARGET
+#include "app_vision_target.h"
+#if APP_ENABLE_GIMBAL_SERVO
+#include "gimbal_servo.h"
+#endif
+#endif
 #include <stdio.h>
 
 static robot_mode_t g_mode = ROBOT_MODE_LINE_FOLLOW;
@@ -43,6 +49,14 @@ void AppRobot_Init(void)
 
     Chassis_Init(TB6612_GetDriver());
     AppLineFollow_Init(YahboomTracker8IO_GetDriver());
+#if APP_ENABLE_VISION_TARGET
+#if APP_ENABLE_GIMBAL_SERVO
+    AppVisionTarget_Init(GimbalServo_GetDriver());
+#else
+    /* 允许先接入视觉协议但不输出云台 PWM，便于分阶段调试串口协议。 */
+    AppVisionTarget_Init(0);
+#endif
+#endif
 
     g_mode = ROBOT_MODE_LINE_FOLLOW;
     g_last_control_ms = BSP_GetTickMs();
@@ -64,13 +78,26 @@ void AppRobot_Task(void)
          */
         Chassis_UpdateEncoder();
 
-        if (g_mode == ROBOT_MODE_LINE_FOLLOW)
+        switch (g_mode)
         {
+        case ROBOT_MODE_LINE_FOLLOW:
             AppLineFollow_Update(dt);
-        }
-        else
-        {
+            break;
+
+        case ROBOT_MODE_TARGET_TRACK:
+            /* 目标跟踪模式预留给 OpenMV/树莓派 + 云台。
+             * 当前默认配置未启用视觉/云台时，底盘保持空转停止，避免误以为会继续循迹。
+             */
             Chassis_StopCoast();
+#if APP_ENABLE_VISION_TARGET
+            AppVisionTarget_Update(now);
+#endif
+            break;
+
+        case ROBOT_MODE_STOP:
+        default:
+            Chassis_StopCoast();
+            break;
         }
     }
 

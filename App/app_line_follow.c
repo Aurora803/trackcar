@@ -15,6 +15,8 @@ static uint32_t g_reacquire_time_ms = 0U;
 static int8_t g_corner_dir = 0;
 static int32_t g_corner_encoder_sum = 0;
 static uint16_t g_corner_count = 0U;
+static int8_t g_corner_candidate_dir = 0;
+static uint8_t g_corner_candidate_count = 0U;
 
 static int32_t abs_i32(int32_t value)
 {
@@ -60,8 +62,19 @@ static uint8_t tracker_center_found(const tracker8_sample_t *sample)
     return 0U;
 }
 
+static void reset_corner_debounce(void)
+{
+    g_corner_candidate_dir = 0;
+    g_corner_candidate_count = 0U;
+}
+
 static int8_t detect_corner_dir(const tracker8_sample_t *sample)
 {
+#if !APP_RECTANGLE_TRACK_ONLY
+    /* 非矩形赛道先不自动进入 90 度转角状态，避免普通岔线/噪声触发专用逻辑。 */
+    (void)sample;
+    return 0;
+#else
     uint8_t left_count;
     uint8_t right_count;
 
@@ -87,13 +100,39 @@ static int8_t detect_corner_dir(const tracker8_sample_t *sample)
         return 1;
     }
 
-    /* 宽横线/全黑线：矩形闭环没有岔路，按默认方向过 90° 弯。 */
+    /* 宽横线/全黑线：矩形闭环没有岔路，按默认方向转 90° 弯。 */
     if (sample->status == TRACKER_STATUS_CROSS)
     {
         return (RECT_DEFAULT_CORNER_DIR >= 0) ? 1 : -1;
     }
 
     return 0;
+#endif
+}
+
+static uint8_t corner_dir_confirmed(int8_t dir)
+{
+    if (dir == 0)
+    {
+        reset_corner_debounce();
+        return 0U;
+    }
+
+    if (g_corner_candidate_dir == dir)
+    {
+        if (g_corner_candidate_count < 255U)
+        {
+            g_corner_candidate_count++;
+        }
+    }
+    else
+    {
+        g_corner_candidate_dir = dir;
+        g_corner_candidate_count = 1U;
+    }
+
+    /* 单帧边缘反光或杂线只会成为候选，不会立刻让小车进入转角状态。 */
+    return (g_corner_candidate_count >= LINE_CORNER_DEBOUNCE_COUNT) ? 1U : 0U;
 }
 
 static void enter_state(line_follow_state_t next_state)
@@ -102,6 +141,7 @@ static void enter_state(line_follow_state_t next_state)
     g_state_time_ms = 0U;
     g_lost_time_ms = 0U;
     g_reacquire_time_ms = 0U;
+    reset_corner_debounce();
 
     if (next_state == LINE_STATE_FOLLOW || next_state == LINE_STATE_RECOVER)
     {
@@ -189,8 +229,15 @@ static void handle_follow(const tracker8_sample_t *sample, uint32_t dt_ms)
     corner_dir = detect_corner_dir(sample);
     if (corner_dir != 0)
     {
-        enter_corner(corner_dir);
-        return;
+        if (corner_dir_confirmed(corner_dir))
+        {
+            enter_corner(corner_dir);
+            return;
+        }
+    }
+    else
+    {
+        reset_corner_debounce();
     }
 
     if (!tracker_is_valid(sample))
@@ -361,6 +408,7 @@ void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
     g_corner_dir = 0;
     g_corner_encoder_sum = 0;
     g_corner_count = 0U;
+    reset_corner_debounce();
 }
 
 void AppLineFollow_Update(uint32_t dt_ms)

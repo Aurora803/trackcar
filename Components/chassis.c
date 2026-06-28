@@ -24,8 +24,9 @@ void Chassis_Init(const motor_driver_t *motor_driver)
 
 void Chassis_SetPWM(int16_t left_pwm, int16_t right_pwm)
 {
-    left_pwm = clamp_i16(left_pwm, -LINE_PWM_LIMIT, LINE_PWM_LIMIT);
-    right_pwm = clamp_i16(right_pwm, -LINE_PWM_LIMIT, LINE_PWM_LIMIT);
+    /* 底盘层只做通用 PWM 安全限幅，不关心当前是循迹还是后续视觉/云台模式。 */
+    left_pwm = clamp_i16(left_pwm, -CHASSIS_PWM_LIMIT, CHASSIS_PWM_LIMIT);
+    right_pwm = clamp_i16(right_pwm, -CHASSIS_PWM_LIMIT, CHASSIS_PWM_LIMIT);
 
     g_state.left_pwm = left_pwm;
     g_state.right_pwm = right_pwm;

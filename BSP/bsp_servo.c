@@ -8,9 +8,9 @@
  * 当前接线图中 PA8/PA9 已用于 TIM1 电机 PWM，PA2/PA3 已用于 USART2 调试，PA4~PA7/PB0/PB1/PB10/PB11 用于 8 路循迹，
  * 可直接用于硬件 PWM 舵机的空闲定时器通道不足。
  * 因此本文件默认不启用。后续建议：
- * 1. 重新规划电机 PWM 或外接舵机驱动，避免占用 TIM1；或
- * 2. 外接 PCA9685 舵机驱动板；或
- * 3. 重排 PA8/PA9 电机 PWM 后再启用 TIM1 舵机 PWM。
+ * 1. 优先评估 TIM3 部分重映射到 PB4/PB5 输出 50Hz 舵机 PWM；或
+ * 2. 外接 PCA9685 舵机驱动板，彻底避开 MCU 定时器通道冲突；或
+ * 3. 如果硬件重新布线，再重排电机 PWM/舵机 PWM。不要直接复用 TIM1 空闲通道，TIM1 当前 1kHz 周期属于电机 PWM。
  */
 
 #if APP_ENABLE_GIMBAL_SERVO

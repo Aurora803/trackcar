@@ -56,10 +56,10 @@ Design assumptions for this draft:
 | TIM1_CH1 | Right motor PWM | PA8 | PWM1, 1 kHz, ARR=999, PSC=71 |
 | TIM1_CH2 | Left motor PWM | PA9 | PWM1, 1 kHz, ARR=999, PSC=71 |
 | TIM2 | Left wheel quadrature encoder | PA0, PA1 | Encoder mode TI12 |
-| TIM3 | 10 ms control tick | none | Update interrupt, increments `g_tick_10ms` |
+| TIM3 | Reserved | none | 当前代码未占用。后续云台可评估 TIM3 部分重映射到 PB4/PB5，但不能占用已接循迹的 PB0/PB1 |
 | TIM4 | Right wheel quadrature encoder | PB6, PB7 | Encoder mode TI12 |
 | USART2 | Debug UART | PA2, PA3 | 115200, 8N1, no flow control |
-| SysTick | Blocking delay | none | HCLK/8 |
+| SysTick | 1 ms system tick | none | `SysTick_Handler` 调用 `BSP_SysTick_Inc()`，主循环按毫秒轮询调度控制/遥测/LED |
 | ADC | Not used | none | No user-level initialization found |
 | I2C | Not used | none | No user-level initialization found |
 | SPI | Not used | none | No user-level initialization found |
@@ -74,4 +74,6 @@ Design assumptions for this draft:
 | PB10/PB11 | Track X2/X1 | USART3/I2C2 |
 | PB12..PB15 | TB6612 direction pins | SPI2 |
 | PA9 | Left PWM | USART1_TX |
+| PA2/PA3 | Debug UART / reserved vision UART | OpenMV/RPi UART | 当前只有一组可用 USART2，调试 USB-TTL 与视觉数据不能同时独立连接 |
+| PB4/PB5 | Currently free when JTAG disabled | Future TIM3_CH1/CH2 servo PWM | 需使用 TIM3 部分重映射；保持 PB0/PB1 继续给循迹 X4/X3 |
 

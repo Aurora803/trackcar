@@ -23,6 +23,8 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f10x_it.h"
+#include "bsp_systick.h"
+#include "bsp_uart.h"
 
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
@@ -172,6 +174,8 @@ void PendSV_Handler(void)
   */
 void SysTick_Handler(void)
 {
+  /* 1 ms 系统节拍。主循环里的控制、遥测和 LED 调度都依赖这个计数递增。 */
+  BSP_SysTick_Inc();
 }
 
 /******************************************************************************/
@@ -189,6 +193,19 @@ void SysTick_Handler(void)
 /*void PPP_IRQHandler(void)
 {
 }*/
+
+/**
+  * @brief  This function handles USART2 global interrupt request.
+  * @param  None
+  * @retval None
+  */
+void USART2_IRQHandler(void)
+{
+  /* 启动文件向量表要求使用 USART2_IRQHandler 这个符号名。
+   * BSP 层只负责串口收发细节，这里只做一次薄转发，避免中断落入 Default_Handler。
+   */
+  BSP_UART2_IRQHandler();
+}
 
 /**
   * @}
