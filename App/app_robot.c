@@ -13,30 +13,36 @@
 #include "gimbal_servo.h"
 #endif
 #endif
+#include <stdint.h>
 #include <stdio.h>
 
 static robot_mode_t g_mode = ROBOT_MODE_LINE_FOLLOW;
 static uint32_t g_last_control_ms = 0U;
 static uint32_t g_last_telemetry_ms = 0U;
 static uint32_t g_last_led_ms = 0U;
+static int32_t g_telemetry_left_encoder_accum = 0;
+static int32_t g_telemetry_right_encoder_accum = 0;
 
 static void telemetry_output(void)
 {
     line_follow_debug_t dbg = AppLineFollow_GetDebug();
     chassis_state_t ch = Chassis_GetState();
 
-    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%d RE=%d C=%u DIR=%d SUM=%u\r\n",
+    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u\r\n",
            (int)g_mode,
            (int)dbg.state,
            dbg.tracker.raw_bits,
            dbg.tracker.position_error,
            ch.left_pwm,
            ch.right_pwm,
-           ch.left_encoder_delta,
-           ch.right_encoder_delta,
+           (long)g_telemetry_left_encoder_accum,
+           (long)g_telemetry_right_encoder_accum,
            (unsigned int)dbg.corner_count,
            (int)dbg.corner_dir,
            (unsigned int)dbg.corner_encoder_sum);
+
+    g_telemetry_left_encoder_accum = 0;
+    g_telemetry_right_encoder_accum = 0;
 }
 
 void AppRobot_Init(void)
@@ -77,6 +83,11 @@ void AppRobot_Task(void)
          * 但后续接速度闭环时不会再遇到 50ms 遥测周期数据滞后的问题。
          */
         Chassis_UpdateEncoder();
+        {
+            chassis_state_t ch = Chassis_GetState();
+            g_telemetry_left_encoder_accum += ch.left_encoder_delta;
+            g_telemetry_right_encoder_accum += ch.right_encoder_delta;
+        }
 
         switch (g_mode)
         {

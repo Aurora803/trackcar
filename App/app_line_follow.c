@@ -80,10 +80,9 @@ static int8_t detect_corner_dir(const tracker8_sample_t *sample)
 
     if (!tracker_is_valid(sample))
     {
-        if (abs_i32((int32_t)sample->last_valid_error) >= LINE_CORNER_ERROR_THRESHOLD)
-        {
-            return (sample->last_valid_error > 0) ? 1 : -1;
-        }
+        /* 丢线本身不能直接判定为直角弯。否则普通偏出赛道/传感器瞬断也会进入 CORNER，
+         * 你的串口里 S=3 且 RAW=0x00 就是这种风险。矩形直角只在有效压线形态下识别。
+         */
         return 0;
     }
 
@@ -100,11 +99,15 @@ static int8_t detect_corner_dir(const tracker8_sample_t *sample)
         return 1;
     }
 
-    /* 宽横线/全黑线：矩形闭环没有岔路，按默认方向转 90° 弯。 */
+#if RECT_ENABLE_CROSS_CORNER
+    /* 宽横线/全黑线：只有确认赛道直角处会稳定出现“多路同时触发”时才打开。
+     * 默认关闭，避免传感器过低、黑线过宽或反光导致直线误进 CORNER。
+     */
     if (sample->status == TRACKER_STATUS_CROSS)
     {
         return (RECT_DEFAULT_CORNER_DIR >= 0) ? 1 : -1;
     }
+#endif
 
     return 0;
 #endif
@@ -260,7 +263,6 @@ static void handle_follow(const tracker8_sample_t *sample, uint32_t dt_ms)
 
 static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
-    int16_t turn;
     int16_t left;
     int16_t right;
 
@@ -286,10 +288,20 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
         return;
     }
 
-    turn = (sample->last_valid_error >= 0) ? LINE_BLIND_TURN_PWM : (int16_t)(-LINE_BLIND_TURN_PWM);
-    left = (int16_t)(LINE_BLIND_BASE_PWM + turn);
-    right = (int16_t)(LINE_BLIND_BASE_PWM - turn);
-    apply_pwm(left, right, turn);
+    /* 丢线搜索先不用反转轮，避免 LPWM=-140/RPWM=500 这种猛甩头。
+     * last_valid_error 左负右正：线最后在右侧就向右找，最后在左侧就向左找。
+     */
+    if (sample->last_valid_error >= 0)
+    {
+        left = LINE_BLIND_TURN_PWM;
+        right = LINE_BLIND_BASE_PWM;
+    }
+    else
+    {
+        left = LINE_BLIND_BASE_PWM;
+        right = LINE_BLIND_TURN_PWM;
+    }
+    apply_pwm(left, right, 0);
 }
 
 static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
@@ -297,8 +309,9 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     chassis_state_t ch;
     int16_t left;
     int16_t right;
-    uint8_t reached_encoder;
-    uint8_t found_center;
+    uint8_t reached_encoder = 0U;
+    uint8_t reached_time = 0U;
+    uint8_t found_center = 0U;
 
     g_state_time_ms += dt_ms;
     ch = Chassis_GetState();
@@ -318,10 +331,22 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     apply_pwm(left, right, 0);
 
+#if LINE_CORNER_USE_ENCODER
     reached_encoder = (g_corner_encoder_sum >= LINE_CORNER_ENCODER_TARGET) ? 1U : 0U;
-    found_center = tracker_center_found(sample);
+    if (g_corner_encoder_sum >= LINE_CORNER_CENTER_ENABLE_ENCODER)
+    {
+        found_center = tracker_center_found(sample);
+    }
+#else
+    /* 编码器还没调通时，先用固定时间退出直角弯，避免 SUM=0 时卡死或直接 LOST。 */
+    reached_time = (g_state_time_ms >= LINE_CORNER_TIME_MS) ? 1U : 0U;
+    if (g_state_time_ms >= LINE_CORNER_MIN_MS)
+    {
+        found_center = tracker_center_found(sample);
+    }
+#endif
 
-    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_encoder || found_center))
+    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_encoder || reached_time || found_center))
     {
         if (g_corner_count < 65535U)
         {
@@ -333,7 +358,7 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     if (g_state_time_ms >= LINE_CORNER_TIMEOUT_MS)
     {
-        enter_state(LINE_STATE_LOST);
+        enter_state(LINE_STATE_BLIND);
     }
 }
 
@@ -343,13 +368,10 @@ static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     if (!tracker_is_valid(sample))
     {
-        g_lost_time_ms += dt_ms;
-        if (g_lost_time_ms >= LINE_BLIND_ENTER_MS)
-        {
-            enter_state(LINE_STATE_BLIND);
-            return;
-        }
-        apply_pwm(LINE_RECOVER_PWM, LINE_RECOVER_PWM, 0);
+        /* RECOVER 的含义是“已经重新看见线后的平滑恢复”。
+         * RAW=0 时继续直行会把车带离赛道，因此立即退回 BLIND 找线。
+         */
+        enter_state(LINE_STATE_BLIND);
         return;
     }
 
@@ -362,16 +384,27 @@ static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 }
 
-static void handle_lost(const tracker8_sample_t *sample)
+static void handle_lost(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
     Chassis_StopCoast();
     g_debug.left_pwm = 0;
     g_debug.right_pwm = 0;
     g_debug.correction = 0;
 
+    /* LOST 后不能一看到单帧有效就立刻 RECOVER，否则传感器抖一下会反复启动/停车。
+     * 要求连续稳定看到线 LINE_BLIND_REACQUIRE_MS 后，再进入恢复状态。
+     */
     if (tracker_is_valid(sample))
     {
-        enter_state(LINE_STATE_RECOVER);
+        g_reacquire_time_ms += dt_ms;
+        if (g_reacquire_time_ms >= LINE_BLIND_REACQUIRE_MS)
+        {
+            enter_state(LINE_STATE_RECOVER);
+        }
+    }
+    else
+    {
+        g_reacquire_time_ms = 0U;
     }
 }
 
@@ -448,7 +481,7 @@ void AppLineFollow_Update(uint32_t dt_ms)
 
     case LINE_STATE_LOST:
     default:
-        handle_lost(&sample);
+        handle_lost(&sample, dt_ms);
         break;
     }
 

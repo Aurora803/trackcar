@@ -63,28 +63,38 @@ extern "C" {
  * 如果出现 6 路以上同时触发这种“横线/宽黑线”特征，则按这里的默认方向转。
  */
 #define RECT_DEFAULT_CORNER_DIR        1
+/* 0：不把 6 路以上同时触发直接当作直角弯，避免宽黑线/反光误触发。
+ * 矩形调稳后，如果你的赛道直角处经常是整排横线，可再改成 1。
+ */
+#define RECT_ENABLE_CROSS_CORNER       0
 
 #define LINE_START_STABLE_MS           200U
 #define LINE_BLIND_ENTER_MS            20U
-#define LINE_BLIND_REACQUIRE_MS        30U
-#define LINE_BLIND_TIMEOUT_MS          400U
+#define LINE_BLIND_REACQUIRE_MS        40U
+#define LINE_BLIND_TIMEOUT_MS          600U
 #define LINE_RECOVER_MS                160U
-#define LINE_CORNER_MIN_MS             90U
+#define LINE_CORNER_MIN_MS             180U
 #define LINE_CORNER_TIMEOUT_MS         700U
-#define LINE_CORNER_ENCODER_TARGET     380
+/* 当前你的串口 LE/RE/SUM 一直为 0，说明编码器反馈未通。
+ * 先用定时直角弯跑通矩形；后续编码器修好后改成 1。
+ */
+#define LINE_CORNER_USE_ENCODER        0
+#define LINE_CORNER_TIME_MS            330U
+#define LINE_CORNER_ENCODER_TARGET     550
+#define LINE_CORNER_CENTER_ENABLE_ENCODER 420  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
 #define LINE_CORNER_DEBOUNCE_COUNT     2U  /* 连续检测到同向直角特征后才切入转角状态。 */
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   450
 
-#define LINE_BASE_PWM_FAST             430
-#define LINE_BASE_PWM_MID              370
-#define LINE_BASE_PWM_SLOW             310
-#define LINE_RECOVER_PWM               300
-#define LINE_BLIND_BASE_PWM            180
-#define LINE_BLIND_TURN_PWM            320
-#define LINE_CORNER_INNER_PWM          180
-#define LINE_CORNER_OUTER_PWM          560
+#define LINE_BASE_PWM_FAST             300
+#define LINE_BASE_PWM_MID              260
+#define LINE_BASE_PWM_SLOW             220
+#define LINE_RECOVER_PWM               220
+#define LINE_BLIND_BASE_PWM            90
+#define LINE_BLIND_TURN_PWM            220
+#define LINE_CORNER_INNER_PWM          80
+#define LINE_CORNER_OUTER_PWM          300
 
 /* 权重单位越大，转向响应越强。左负右正。 */
 #define TRACKER_WEIGHT_0               (-1200)
@@ -99,10 +109,10 @@ extern "C" {
 /* ===================== 循迹 PID 初值 ===================== */
 #define LINE_BASE_PWM                  LINE_BASE_PWM_MID
 #define LINE_PWM_LIMIT                 CHASSIS_PWM_LIMIT
-#define LINE_PID_KP                    0.22f
+#define LINE_PID_KP                    0.16f
 #define LINE_PID_KI                    0.00f
-#define LINE_PID_KD                    0.006f
-#define LINE_PID_OUT_LIMIT             360.0f
+#define LINE_PID_KD                    0.004f
+#define LINE_PID_OUT_LIMIT             220.0f
 #define LINE_PID_INTEGRAL_LIMIT        800.0f
 
 /* ===================== 视觉/云台预留 ===================== */
