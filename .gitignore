@@ -1,0 +1,43 @@
+# dot files
+/.vscode/launch.json
+/.settings
+/.eide/log
+/.eide.usr.ctx.json
+/.eide/tasks.json
+/.eide/.history/
+
+# project out
+/build
+/bin
+/obj
+/out
+
+# eide template
+*.ept
+*.eide-template
+
+# --- GCC / Makefile 构建产物 ---
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.out
+*.map
+*.lss
+
+# --- Keil MDK 构建产物 ---
+*.uvguix.*
+*.dep
+*.crf
+*.axf
+*.iex
+*.tra
+*.Administrator
+JLinkLog.txt
+
+# --- 通用日志/临时文件 ---
+*.log
+*.tmp
+*~
+\#*\#
