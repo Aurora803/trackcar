@@ -23,13 +23,20 @@ Components 组件层
 └── gimbal_servo         # 舵机云台示例实现，默认未启用
 
 BSP 板级层
-├── bsp_gpio             # GPIO 配置
+├── bsp_gpio             # AFIO/SWD、板载 LED 等公共 GPIO 配置
 ├── bsp_pwm              # TIM1 PWM，PA8/PA9 电机调速
 ├── bsp_encoder          # TIM2/TIM4 编码器模式
 ├── bsp_uart             # USART2，PA2/PA3 调试串口
 ├── bsp_systick          # 1ms 系统节拍
 └── bsp_servo            # 可选云台 PWM，默认未启用
 ```
+
+`App/app_config.h` 虽然物理位置在 App 目录，但当前实际承担跨层 Config 角色。
+BSP / Components include `app_config.h` 是为了读取引脚、PWM、方向、电平和调参宏，
+不代表 BSP 反向调用 App 业务逻辑。后续如果进一步解耦，可考虑拆成：
+
+- `Config/board_config.h`：引脚、时钟、PWM、编码器、电机方向等板级配置；
+- `App/app_config.h`：循迹状态机、PID、调试周期、模式开关等应用层参数。
 
 ## 3. 功能阶段
 
@@ -75,5 +82,5 @@ BSP 板级层
 1. BSP 不知道“小车逻辑”，只负责外设。
 2. 组件层不直接依赖应用模式，只提供稳定接口。
 3. 应用层只调用接口，不直接操作寄存器。
-4. 引脚集中放在 `app_config.h`，移植时优先改配置，不改算法。
+4. 引脚当前集中放在 `app_config.h` 这个跨层 Config 文件中，移植时优先改配置，不改算法。
 5. 视觉打靶与循迹用不同 App 模块，避免一个功能改动影响另一个功能。

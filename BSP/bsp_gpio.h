@@ -3,7 +3,7 @@
  * @brief STM32 GPIO 底层接口。
  * @layer BSP
  *
- * BSP GPIO 只负责引脚初始化和读写，不包含循迹、PID 或模式逻辑。
+ * BSP GPIO 只负责公共 GPIO 初始化和通用读写，不包含循迹、PID 或模式逻辑。
  */
 #ifndef BSP_GPIO_H
 #define BSP_GPIO_H
@@ -24,7 +24,7 @@ typedef struct
 } gpio_pin_t;
 
 /**
- * @brief 初始化当前板级使用的全部 GPIO。
+ * @brief 初始化当前板级公共 GPIO/AFIO 配置。
  */
 void BSP_GPIO_InitAll(void);
 

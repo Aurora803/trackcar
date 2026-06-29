@@ -1,13 +1,12 @@
 /**
  * @file bsp_gpio.c
- * @brief 当前 STM32F103C8T6 接线的 GPIO 初始化和读写。
+ * @brief 当前 STM32F103C8T6 接线的公共 GPIO 初始化和读写。
  * @layer BSP
  *
- * 本文件只描述板级引脚用途。更改引脚前同步检查 docs/PINMAP.md、app_config.h
- * 以及 PWM/USART/Encoder 是否冲突。
+ * 本文件只负责全局 GPIO/板级公共初始化和通用读写。具体外设 GPIO
+ * 应由对应模块 Init 负责，例如 TB6612 方向脚、循迹输入、PWM、编码器和 USART。
  */
 #include "bsp_gpio.h"
-#include "app_config.h"
 
 /**
  * @brief 初始化推挽输出 GPIO。
@@ -22,41 +21,18 @@ static void gpio_init_output_pp(GPIO_TypeDef *port, uint16_t pin)
 }
 
 /**
- * @brief 初始化上拉输入 GPIO。
- */
-static void gpio_init_input_pullup(GPIO_TypeDef *port, uint16_t pin)
-{
-    GPIO_InitTypeDef gpio;
-    gpio.GPIO_Pin = pin;
-    gpio.GPIO_Mode = GPIO_Mode_IPU;
-    gpio.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(port, &gpio);
-}
-
-/**
- * @brief 初始化 TB6612 方向脚、8 路循迹输入和板载 LED。
+ * @brief 初始化全局 GPIO / 板级公共配置。
+ *
+ * 本函数不再负责所有外设 GPIO。TB6612 方向脚由 TB6612_Init() 初始化，
+ * 8 路循迹输入由 YahboomTracker8IO_Init() 初始化，PWM/编码器/USART 也由
+ * 各自 BSP Init 负责。这里仅保留 AFIO/SWD 公共配置和 PC13 板载 LED。
  */
 void BSP_GPIO_InitAll(void)
 {
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO |
-                           RCC_APB2Periph_GPIOA |
-                           RCC_APB2Periph_GPIOB |
-                           RCC_APB2Periph_GPIOC, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC, ENABLE);
 
     /* 关闭 JTAG，保留 SWD。当前接线未使用 PB3/PB4，但保留该设置便于后续扩展。 */
     GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
-
-    /* TB6612 方向控制。STBY 已按接线图直接接 3.3V，不占用 STM32 引脚。 */
-    gpio_init_output_pp(TB6612_AIN1_PORT, TB6612_AIN1_PIN);
-    gpio_init_output_pp(TB6612_AIN2_PORT, TB6612_AIN2_PIN);
-    gpio_init_output_pp(TB6612_BIN1_PORT, TB6612_BIN1_PIN);
-    gpio_init_output_pp(TB6612_BIN2_PORT, TB6612_BIN2_PIN);
-
-    /* 8 路循迹输入：X1-X8，从左到右。
-     * X1 PB11, X2 PB10, X3 PB1, X4 PB0, X5 PA7, X6 PA6, X7 PA5, X8 PA4。
-     */
-    gpio_init_input_pullup(GPIOA, GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7);
-    gpio_init_input_pullup(GPIOB, GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_10 | GPIO_Pin_11);
 
     /* PC13 板载 LED，BluePill 常见低电平点亮。 */
     gpio_init_output_pp(GPIOC, GPIO_Pin_13);

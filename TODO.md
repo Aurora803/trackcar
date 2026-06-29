@@ -30,3 +30,12 @@ Assumptions used for the current draft:
 - Track and encoder connectors are powered from 3.3 V unless level shifting is added.
 - HSE 8 MHz crystal is included because the firmware configures 72 MHz using HSE.
 - TB6612 STBY is pulled up to 3.3 V, not controlled by MCU.
+
+Firmware follow-up items:
+
+1. USART2 `printf` is still blocking. Keep the current telemetry fields and 50ms period while
+   TB6612FNG hardware is being debugged; before speed closed-loop tuning, evaluate USART2 TX
+   interrupt or DMA sending to reduce main-loop blocking.
+2. `BSP/bsp_servo.c` still contains a guarded placeholder for gimbal PWM. Do not enable
+   `APP_ENABLE_GIMBAL_SERVO` until stage D rewrites the servo PWM plan to TIM3 + PB4/PB5
+   or another non-conflicting output path.

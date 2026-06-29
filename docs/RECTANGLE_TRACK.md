@@ -50,6 +50,9 @@ X1 X2 X3 X4 X5 X6 X7 X8
 
 重点参数都在 `App/app_config.h`：
 
+> 当前实际生效参数一律以 `App/app_config.h` 为准。本文中的代码块用于快速定位
+> 当前调参入口；后续若文档与代码不一致，不要按文档旧值反向修改代码参数。
+
 ```c
 #define LINE_BASE_PWM_FAST          300
 #define LINE_BASE_PWM_MID           260

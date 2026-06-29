@@ -21,6 +21,40 @@ static const gpio_pin_t BIN1_PIN = {TB6612_BIN1_PORT, TB6612_BIN1_PIN};
 static const gpio_pin_t BIN2_PIN = {TB6612_BIN2_PORT, TB6612_BIN2_PIN};
 
 /**
+ * @brief 初始化 TB6612 方向控制 GPIO。
+ *
+ * 当前接线中 AIN1/AIN2/BIN1/BIN2 为 PB12~PB15。这里启用 GPIO 时钟并配置为
+ * 推挽输出，使 TB6612_Init() 自包含，不再依赖 BSP_GPIO_InitAll() 的调用顺序。
+ * 若 TB6612_STBY_CONTROL_BY_GPIO=1，STBY 也会在这里配置为 GPIO 输出；当前默认
+ * 为 0，表示 STBY 按接线图由硬件上拉到 3.3V，软件只保留兼容接口。
+ */
+static void tb6612_gpio_init(void)
+{
+    GPIO_InitTypeDef gpio;
+
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA |
+                           RCC_APB2Periph_GPIOB |
+                           RCC_APB2Periph_GPIOC, ENABLE);
+
+    gpio.GPIO_Mode = GPIO_Mode_Out_PP;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+
+    gpio.GPIO_Pin = TB6612_AIN1_PIN;
+    GPIO_Init(TB6612_AIN1_PORT, &gpio);
+    gpio.GPIO_Pin = TB6612_AIN2_PIN;
+    GPIO_Init(TB6612_AIN2_PORT, &gpio);
+    gpio.GPIO_Pin = TB6612_BIN1_PIN;
+    GPIO_Init(TB6612_BIN1_PORT, &gpio);
+    gpio.GPIO_Pin = TB6612_BIN2_PIN;
+    GPIO_Init(TB6612_BIN2_PORT, &gpio);
+
+#if TB6612_STBY_CONTROL_BY_GPIO
+    gpio.GPIO_Pin = TB6612_STBY_PIN;
+    GPIO_Init(TB6612_STBY_PORT, &gpio);
+#endif
+}
+
+/**
  * @brief 根据速度正负设置 TB6612 IN1/IN2 方向脚。
  */
 static void set_dir(gpio_pin_t in1, gpio_pin_t in2, int16_t speed)
@@ -44,10 +78,14 @@ static void set_dir(gpio_pin_t in1, gpio_pin_t in2, int16_t speed)
 }
 
 /**
- * @brief 初始化电机 PWM，并让两路电机处于空转停止状态。
+ * @brief 初始化 TB6612 方向 GPIO 和电机 PWM，并让两路电机处于空转停止状态。
+ *
+ * 本函数现在负责初始化 TB6612 方向控制 GPIO。STBY 是否由 GPIO 控制取决于
+ * TB6612_STBY_CONTROL_BY_GPIO：当前默认 STBY 硬件接 3.3V，软件不驱动该脚。
  */
 void TB6612_Init(void)
 {
+    tb6612_gpio_init();
     BSP_PWM_MotorInit();
     TB6612_Standby(0U);
     TB6612_Coast(MOTOR_CHANNEL_LEFT);

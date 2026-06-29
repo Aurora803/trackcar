@@ -12,9 +12,11 @@
 #include "common_types.h"
 
 static const gimbal_driver_t *g_gimbal = 0;
+#if APP_ENABLE_VISION_TARGET
 static float g_pan = GIMBAL_PAN_CENTER_DEG;
 static float g_tilt = GIMBAL_TILT_CENTER_DEG;
 static uint32_t g_last_target_ms = 0U;
+#endif
 
 /**
  * @brief 初始化视觉协议和可选云台驱动。

@@ -64,7 +64,7 @@ static uint8_t tracker_center_found(const tracker8_sample_t *sample)
         return 0U;
     }
 
-    center_bits = (uint8_t)(sample->raw_bits & 0x18U); /* S4/S5 */
+    center_bits = (uint8_t)(sample->raw_bits & 0x18U); /* X4/X5 */
     if (center_bits != 0U && abs_i32((int32_t)sample->position_error) <= LINE_RECOVER_ERROR_THRESHOLD)
     {
         return 1U;
@@ -210,7 +210,8 @@ static int16_t calc_dynamic_base_pwm(int16_t position_error)
 /**
  * @brief 下发左右轮 PWM 并更新调试字段。
  *
- * 这里做循迹层限幅，Chassis_SetPWM 内还会再做底盘统一安全限幅。
+ * LINE_PWM_LIMIT 是循迹应用层限幅；Chassis_SetPWM 内的 CHASSIS_PWM_LIMIT
+ * 是底盘安全限幅。当前两者相同，本轮保持双层限幅以避免改变既有输出路径。
  */
 static void apply_pwm(int16_t left, int16_t right, int16_t correction)
 {

@@ -39,10 +39,39 @@ static const int16_t g_tracker_weights[TRACKER_SENSOR_COUNT] =
 };
 
 /**
- * @brief 初始化最近一次有效误差。
+ * @brief 初始化 8 路循迹输入 GPIO。
+ *
+ * 当前 Yahboom 8 路循迹输入为 X1 PB11、X2 PB10、X3 PB1、X4 PB0、
+ * X5 PA7、X6 PA6、X7 PA5、X8 PA4，均按上拉输入配置。黑线是否为低电平有效
+ * 不在 GPIO 初始化阶段决定，而由 YahboomTracker8IO_Read() 中的
+ * TRACKER_BLACK_ACTIVE_LOW 宏统一转换。
+ */
+static void tracker_gpio_init(void)
+{
+    GPIO_InitTypeDef gpio;
+
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
+
+    gpio.GPIO_Mode = GPIO_Mode_IPU;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+
+    gpio.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
+    GPIO_Init(GPIOA, &gpio);
+
+    gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_10 | GPIO_Pin_11;
+    GPIO_Init(GPIOB, &gpio);
+}
+
+/**
+ * @brief 初始化 8 路循迹输入 GPIO 和最近一次有效误差。
+ *
+ * 本函数现在负责初始化 8 路循迹输入 GPIO，使传感器驱动不再依赖
+ * BSP_GPIO_InitAll() 的调用顺序。黑线有效电平由 TRACKER_BLACK_ACTIVE_LOW 决定：
+ * 当前配置为 1，即 GPIO 读到低电平时认为检测到黑线。
  */
 void YahboomTracker8IO_Init(void)
 {
+    tracker_gpio_init();
     g_last_valid_error = 0;
 }
 

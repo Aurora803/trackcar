@@ -23,7 +23,9 @@ App/app_config.h
 如果只换引脚，不建议改 `app_line_follow.c`、`chassis.c`、`pid.c` 等逻辑文件。应改：
 
 - `App/app_config.h`：宏定义；
-- `BSP/bsp_gpio.c`：GPIO 初始化；
+- `Components/tb6612_motor.c`：TB6612 方向控制 GPIO 初始化；
+- `Components/yahboom_tracker8_io.c`：8 路循迹输入 GPIO 初始化；
+- `BSP/bsp_gpio.c`：AFIO/SWD、板载 LED 等公共 GPIO 初始化；
 - `BSP/bsp_pwm.c`：PWM 定时器通道；
 - `BSP/bsp_encoder.c`：编码器定时器。
 
@@ -53,7 +55,13 @@ App/app_config.h
 
 ### PB3/PB4 读不到
 
-确认保留 SWD、关闭 JTAG；代码位于 `BSP_GPIO_InitAll()`。
+确认保留 SWD、关闭 JTAG；公共 AFIO 配置位于 `BSP_GPIO_InitAll()`。
+
+### 调试串口输出影响实时性
+
+当前 `printf` 通过 USART2 阻塞发送。调试阶段保留 50ms 遥测有利于确认 TB6612、
+循迹 RAW 位和编码器方向；后续做速度闭环或提高控制频率前，应评估降低打印频率
+或改成中断/DMA 发送。
 
 ### 接上树莓派后 STM32 复位
 
