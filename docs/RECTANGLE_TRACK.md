@@ -32,7 +32,7 @@ X1 X2 X3 X4 X5 X6 X7 X8
 
 - 左侧 X1~X4 中 3 路以上触发、右侧 X5~X8 很少触发：判断左直角；
 - 右侧 X5~X8 中 3 路以上触发、左侧 X1~X4 很少触发：判断右直角；
-- 6 路以上同时触发，认为是宽黑线/横线特征；因为本版本只跑矩形闭合赛道，没有岔路，按 `RECT_DEFAULT_CORNER_DIR` 指定方向转弯。
+- 6 路以上同时触发，认为是宽黑线/横线特征；当前 `RECT_ENABLE_CROSS_CORNER = 0`，默认不直接按横线进入直角弯，确认赛道直角处稳定出现该特征后再打开。
 
 默认：
 
@@ -51,14 +51,16 @@ X1 X2 X3 X4 X5 X6 X7 X8
 重点参数都在 `App/app_config.h`：
 
 ```c
-#define LINE_BASE_PWM_FAST          430
-#define LINE_BASE_PWM_MID           370
-#define LINE_BASE_PWM_SLOW          310
-#define LINE_CORNER_INNER_PWM       180
-#define LINE_CORNER_OUTER_PWM       560
-#define LINE_CORNER_ENCODER_TARGET  380
-#define LINE_PID_KP                 0.22f
-#define LINE_PID_KD                 0.006f
+#define LINE_BASE_PWM_FAST          300
+#define LINE_BASE_PWM_MID           260
+#define LINE_BASE_PWM_SLOW          220
+#define LINE_CORNER_INNER_PWM       80
+#define LINE_CORNER_OUTER_PWM       300
+#define LINE_CORNER_USE_ENCODER     0
+#define LINE_CORNER_TIME_MS         330U
+#define LINE_CORNER_ENCODER_TARGET  550
+#define LINE_PID_KP                 0.16f
+#define LINE_PID_KD                 0.004f
 ```
 
 调试顺序建议：
@@ -66,15 +68,17 @@ X1 X2 X3 X4 X5 X6 X7 X8
 1. 先把 `LINE_BASE_PWM_FAST/MID/SLOW` 降低到车能慢速稳定跑；
 2. 再调 `LINE_PID_KP`，让车能明显向黑线修正；
 3. 如果直线左右蛇形，略微降低 `KP` 或增加一点 `KD`；
-4. 如果直角弯转不够，增大 `LINE_CORNER_ENCODER_TARGET` 或 `LINE_CORNER_OUTER_PWM`；
-5. 如果直角弯转过头，减小 `LINE_CORNER_ENCODER_TARGET` 或降低 `LINE_CORNER_OUTER_PWM`。
+4. 当前 `LINE_CORNER_USE_ENCODER = 0`，直角弯主要按 `LINE_CORNER_TIME_MS` 定时退出；
+5. 如果直角弯转不够，先小幅增大 `LINE_CORNER_TIME_MS` 或 `LINE_CORNER_OUTER_PWM`；
+6. 如果直角弯转过头，先减小 `LINE_CORNER_TIME_MS` 或降低 `LINE_CORNER_OUTER_PWM`；
+7. 编码器反馈稳定后，再把 `LINE_CORNER_USE_ENCODER` 改为 1 并重新调 `LINE_CORNER_ENCODER_TARGET`。
 
 ## 4. 串口调试字段
 
 当前 USART2 输出格式：
 
 ```text
-M=0 S=1 RAW=0x18 ERR=0 LPWM=430 RPWM=430 LE=12 RE=13 C=0 DIR=0 SUM=0
+M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=12 RE=13 C=0 DIR=0 SUM=0
 ```
 
 字段含义：

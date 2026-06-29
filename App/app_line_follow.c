@@ -1,13 +1,24 @@
+/**
+ * @file app_line_follow.c
+ * @brief 8 路红外循迹状态机和 PID 差速控制。
+ * @layer App
+ *
+ * 当前实现面向闭合矩形赛道：正常循迹、丢线搜索、直角弯、恢复和停车等待
+ * 都在本文件内完成。后续若加入速度闭环或更多赛道类型，建议先保留接口，
+ * 再逐步拆分传感器判定、状态机、控制器和调试输出。
+ */
 #include "app_line_follow.h"
 #include "app_config.h"
 #include "pid.h"
 #include "chassis.h"
 #include "common_types.h"
 
+/* 传感器驱动由 AppRobot_Init 注入，便于后续替换不同循迹模块。 */
 static const tracker8_driver_t *g_tracker = 0;
 static pid_t g_line_pid;
 static line_follow_debug_t g_debug;
 
+/* 状态机私有状态，只在主循环控制周期内访问，不与中断共享。 */
 static line_follow_state_t g_state = LINE_STATE_START;
 static uint32_t g_state_time_ms = 0U;
 static uint32_t g_lost_time_ms = 0U;
@@ -62,6 +73,7 @@ static uint8_t tracker_center_found(const tracker8_sample_t *sample)
     return 0U;
 }
 
+/* 直角弯检测去抖：要求连续多帧同方向特征，降低反光/杂线误触发概率。 */
 static void reset_corner_debounce(void)
 {
     g_corner_candidate_dir = 0;
@@ -138,6 +150,12 @@ static uint8_t corner_dir_confirmed(int8_t dir)
     return (g_corner_candidate_count >= LINE_CORNER_DEBOUNCE_COUNT) ? 1U : 0U;
 }
 
+/**
+ * @brief 切换循迹状态并清理状态内计时器。
+ *
+ * FOLLOW/RECOVER 重新启用 PID 时复位积分和 D 项历史，避免上个状态的误差
+ * 直接带入新的差速输出。
+ */
 static void enter_state(line_follow_state_t next_state)
 {
     g_state = next_state;
@@ -152,6 +170,10 @@ static void enter_state(line_follow_state_t next_state)
     }
 }
 
+/**
+ * @brief 进入直角弯状态。
+ * @param dir -1 左转，+1 右转，0 时使用 RECT_DEFAULT_CORNER_DIR。
+ */
 static void enter_corner(int8_t dir)
 {
     if (dir == 0)
@@ -165,6 +187,11 @@ static void enter_corner(int8_t dir)
     enter_state(LINE_STATE_CORNER);
 }
 
+/**
+ * @brief 根据循迹误差动态选择基础 PWM。
+ *
+ * 误差小使用较高速度，误差大自动降速，避免直线和弯道使用同一速度导致过弯冲出。
+ */
 static int16_t calc_dynamic_base_pwm(int16_t position_error)
 {
     int32_t e = abs_i32((int32_t)position_error);
@@ -180,6 +207,11 @@ static int16_t calc_dynamic_base_pwm(int16_t position_error)
     return LINE_BASE_PWM_SLOW;
 }
 
+/**
+ * @brief 下发左右轮 PWM 并更新调试字段。
+ *
+ * 这里做循迹层限幅，Chassis_SetPWM 内还会再做底盘统一安全限幅。
+ */
 static void apply_pwm(int16_t left, int16_t right, int16_t correction)
 {
     left = clamp_i16(left, -LINE_PWM_LIMIT, LINE_PWM_LIMIT);
@@ -191,6 +223,12 @@ static void apply_pwm(int16_t left, int16_t right, int16_t correction)
     Chassis_SetPWM(left, right);
 }
 
+/**
+ * @brief 对有效循迹误差执行 PID 差速控制。
+ *
+ * PID 输出 correction 后，左轮 = base + correction，右轮 = base - correction。
+ * 当前 correction 正负约定依赖 tracker8_if 中“左负右正”的误差定义。
+ */
 static void apply_line_pid(const tracker8_sample_t *sample, uint32_t dt_ms, int16_t base_pwm)
 {
     float correction_f;
@@ -212,6 +250,9 @@ static void apply_line_pid(const tracker8_sample_t *sample, uint32_t dt_ms, int1
     apply_pwm(left, right, correction);
 }
 
+/**
+ * @brief START 状态：上电后保持电机停止，等待传感器和电源稳定。
+ */
 static void handle_start(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
     (void)sample;
@@ -224,6 +265,9 @@ static void handle_start(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 }
 
+/**
+ * @brief FOLLOW 状态：正常循迹、直角候选识别和丢线入口。
+ */
 static void handle_follow(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
     int8_t corner_dir;
@@ -261,6 +305,11 @@ static void handle_follow(const tracker8_sample_t *sample, uint32_t dt_ms)
     apply_line_pid(sample, dt_ms, base_pwm);
 }
 
+/**
+ * @brief BLIND 状态：按最后一次有效误差低速偏转找线。
+ *
+ * 电机动作不使用反转轮，只用左右轮速度差寻找黑线，避免丢线时大幅甩头。
+ */
 static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
     int16_t left;
@@ -304,6 +353,12 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
     apply_pwm(left, right, 0);
 }
 
+/**
+ * @brief CORNER 状态：矩形赛道直角弯处理。
+ *
+ * 进入条件来自 FOLLOW 中的直角特征去抖。退出条件由
+ * LINE_CORNER_USE_ENCODER 决定：当前配置为时间退出，编码器恢复后可改为计数退出。
+ */
 static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
     chassis_state_t ch;
@@ -362,6 +417,9 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 }
 
+/**
+ * @brief RECOVER 状态：重新看到线后的低速平滑恢复。
+ */
 static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
     g_state_time_ms += dt_ms;
@@ -384,6 +442,9 @@ static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 }
 
+/**
+ * @brief LOST 状态：长时间找不到线后停车，等待稳定重新识别到黑线。
+ */
 static void handle_lost(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
     Chassis_StopCoast();
@@ -408,6 +469,9 @@ static void handle_lost(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 }
 
+/**
+ * @brief 初始化循迹状态机、传感器驱动和 PID。
+ */
 void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
 {
     g_tracker = tracker_driver;
@@ -444,6 +508,12 @@ void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
     reset_corner_debounce();
 }
 
+/**
+ * @brief 执行一次循迹控制周期。
+ *
+ * 本函数由 AppRobot_Task 按 APP_CONTROL_PERIOD_MS 调用。函数内读取一次传感器，
+ * 再根据当前状态机分派到对应处理函数。
+ */
 void AppLineFollow_Update(uint32_t dt_ms)
 {
     tracker8_sample_t sample;
@@ -492,6 +562,9 @@ void AppLineFollow_Update(uint32_t dt_ms)
     g_debug.state_time_ms = g_state_time_ms;
 }
 
+/**
+ * @brief 返回当前循迹调试快照。
+ */
 line_follow_debug_t AppLineFollow_GetDebug(void)
 {
     return g_debug;

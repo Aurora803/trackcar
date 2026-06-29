@@ -1,3 +1,11 @@
+/**
+ * @file bsp_pwm.c
+ * @brief TIM1 电机 PWM 初始化和占空比设置。
+ * @layer BSP
+ *
+ * 当前接线：PA8/TIM1_CH1 -> PWMB 右电机，PA9/TIM1_CH2 -> PWMA 左电机。
+ * TIM1 是高级定时器，必须使能主输出 MOE。
+ */
 #include "bsp_pwm.h"
 #include "app_config.h"
 #include "common_types.h"
@@ -5,6 +13,9 @@
 
 static uint16_t g_motor_pwm_period = 0U;
 
+/**
+ * @brief 初始化 TIM1 为 1kHz 电机 PWM。
+ */
 void BSP_PWM_MotorInit(void)
 {
     GPIO_InitTypeDef gpio;
@@ -50,6 +61,11 @@ void BSP_PWM_MotorInit(void)
     TIM_Cmd(TIM1, ENABLE);
 }
 
+/**
+ * @brief 设置指定电机 PWM 通道占空比。
+ *
+ * 这里接收的是绝对占空比，不处理方向。方向由 TB6612 IN1/IN2 控制。
+ */
 void BSP_PWM_SetMotorDutyPermille(uint8_t channel, int16_t duty_permille)
 {
     uint16_t pulse;
@@ -73,6 +89,9 @@ void BSP_PWM_SetMotorDutyPermille(uint8_t channel, int16_t duty_permille)
     }
 }
 
+/**
+ * @brief 返回电机 PWM 周期寄存器值，用于调试确认。
+ */
 uint16_t BSP_PWM_GetMotorPeriod(void)
 {
     return g_motor_pwm_period;

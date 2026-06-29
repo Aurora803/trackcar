@@ -1,3 +1,11 @@
+/**
+ * @file app_robot.c
+ * @brief 应用层总调度实现。
+ * @layer App
+ *
+ * 本模块负责把 BSP 初始化、底盘驱动、循迹任务、视觉预留任务串起来。
+ * 循迹状态机和 PID 不在这里展开，避免 main.c 或总调度层堆积控制细节。
+ */
 #include "app_robot.h"
 #include "app_config.h"
 #include "bsp_gpio.h"
@@ -23,6 +31,12 @@ static uint32_t g_last_led_ms = 0U;
 static int32_t g_telemetry_left_encoder_accum = 0;
 static int32_t g_telemetry_right_encoder_accum = 0;
 
+/**
+ * @brief 输出当前调试遥测。
+ *
+ * 当前 printf 通过 USART2 阻塞发送。50ms 输出一行适合调试，但正式高速闭环
+ * 时应降低频率或改为非阻塞发送，避免串口占用主循环时间。
+ */
 static void telemetry_output(void)
 {
     line_follow_debug_t dbg = AppLineFollow_GetDebug();
@@ -45,6 +59,15 @@ static void telemetry_output(void)
     g_telemetry_right_encoder_accum = 0;
 }
 
+/**
+ * @brief 初始化机器人应用。
+ *
+ * 初始化顺序：
+ * 1. GPIO/SysTick/UART BSP；
+ * 2. 底盘层绑定 TB6612 motor_driver_t；
+ * 3. 循迹层绑定 Yahboom 8 路 tracker8_driver_t；
+ * 4. 可选视觉/云台按宏开关预留。
+ */
 void AppRobot_Init(void)
 {
     BSP_GPIO_InitAll();
@@ -70,6 +93,12 @@ void AppRobot_Init(void)
     g_last_led_ms = g_last_control_ms;
 }
 
+/**
+ * @brief 机器人主循环任务。
+ *
+ * 该函数应在 while(1) 中尽可能频繁调用。实际控制周期由
+ * APP_CONTROL_PERIOD_MS 决定，中断只提供毫秒 tick，不直接跑控制算法。
+ */
 void AppRobot_Task(void)
 {
     uint32_t now = BSP_GetTickMs();
@@ -125,6 +154,11 @@ void AppRobot_Task(void)
     }
 }
 
+/**
+ * @brief 切换机器人模式。
+ *
+ * 当前只在 STOP 模式切入时立即空转停止；其他模式的状态恢复由各自任务处理。
+ */
 void AppRobot_SetMode(robot_mode_t mode)
 {
     g_mode = mode;
@@ -134,6 +168,9 @@ void AppRobot_SetMode(robot_mode_t mode)
     }
 }
 
+/**
+ * @brief 返回当前机器人模式。
+ */
 robot_mode_t AppRobot_GetMode(void)
 {
     return g_mode;

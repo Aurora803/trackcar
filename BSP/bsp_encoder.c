@@ -1,7 +1,18 @@
+/**
+ * @file bsp_encoder.c
+ * @brief TIM2/TIM4 正交编码器采样实现。
+ * @layer BSP
+ *
+ * 本文件只负责定时器编码器模式配置和计数增量读取。速度计算和 PID
+ * 应在 Chassis/控制层完成，不放在 BSP 中。
+ */
 #include "bsp_encoder.h"
 #include "app_config.h"
 #include "stm32f10x.h"
 
+/**
+ * @brief 将指定定时器配置为 TI1/TI2 正交编码器模式。
+ */
 static void encoder_timer_init(TIM_TypeDef *timx)
 {
     TIM_TimeBaseInitTypeDef tb;
@@ -33,6 +44,9 @@ static void encoder_timer_init(TIM_TypeDef *timx)
     TIM_Cmd(timx, ENABLE);
 }
 
+/**
+ * @brief 初始化左 TIM2(PA0/PA1) 和右 TIM4(PB6/PB7) 编码器。
+ */
 void BSP_Encoder_Init(void)
 {
     GPIO_InitTypeDef gpio;
@@ -56,6 +70,9 @@ void BSP_Encoder_Init(void)
     encoder_timer_init(TIM4);
 }
 
+/**
+ * @brief 读取左编码器自上次读取以来的增量并清零计数器。
+ */
 int16_t BSP_Encoder_ReadLeftDelta(void)
 {
     int16_t delta = (int16_t)TIM_GetCounter(TIM2);
@@ -66,6 +83,9 @@ int16_t BSP_Encoder_ReadLeftDelta(void)
     return delta;
 }
 
+/**
+ * @brief 读取右编码器自上次读取以来的增量并清零计数器。
+ */
 int16_t BSP_Encoder_ReadRightDelta(void)
 {
     int16_t delta = (int16_t)TIM_GetCounter(TIM4);
@@ -76,6 +96,9 @@ int16_t BSP_Encoder_ReadRightDelta(void)
     return delta;
 }
 
+/**
+ * @brief 清零左右编码器硬件计数器。
+ */
 void BSP_Encoder_Reset(void)
 {
     TIM_SetCounter(TIM2, 0U);

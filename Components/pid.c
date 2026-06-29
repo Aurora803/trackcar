@@ -1,6 +1,14 @@
+/**
+ * @file pid.c
+ * @brief 通用 PID 控制器实现。
+ * @layer Components
+ */
 #include "pid.h"
 #include "common_types.h"
 
+/**
+ * @brief 初始化 PID 参数、积分限幅和输出限幅。
+ */
 void PID_Init(pid_t *pid,
               float kp,
               float ki,
@@ -24,6 +32,9 @@ void PID_Init(pid_t *pid,
     pid->first_update = 1U;
 }
 
+/**
+ * @brief 清空动态状态，保留 PID 参数和限幅。
+ */
 void PID_Reset(pid_t *pid)
 {
     if (pid == 0) return;
@@ -33,6 +44,12 @@ void PID_Reset(pid_t *pid)
     pid->first_update = 1U;
 }
 
+/**
+ * @brief 执行一次 PID 计算。
+ *
+ * 本函数不做任何硬件访问。调用者负责提供固定周期 dt_s，并把输出映射到
+ * 电机、舵机或其他执行机构。
+ */
 float PID_Update(pid_t *pid, float setpoint, float measurement, float dt_s)
 {
     float error;
@@ -66,6 +83,9 @@ float PID_Update(pid_t *pid, float setpoint, float measurement, float dt_s)
     return output;
 }
 
+/**
+ * @brief 修改 PID 参数，适用于运行中调参。
+ */
 void PID_SetGains(pid_t *pid, float kp, float ki, float kd)
 {
     if (pid == 0) return;

@@ -1,6 +1,17 @@
+/**
+ * @file bsp_gpio.c
+ * @brief 当前 STM32F103C8T6 接线的 GPIO 初始化和读写。
+ * @layer BSP
+ *
+ * 本文件只描述板级引脚用途。更改引脚前同步检查 docs/PINMAP.md、app_config.h
+ * 以及 PWM/USART/Encoder 是否冲突。
+ */
 #include "bsp_gpio.h"
 #include "app_config.h"
 
+/**
+ * @brief 初始化推挽输出 GPIO。
+ */
 static void gpio_init_output_pp(GPIO_TypeDef *port, uint16_t pin)
 {
     GPIO_InitTypeDef gpio;
@@ -10,6 +21,9 @@ static void gpio_init_output_pp(GPIO_TypeDef *port, uint16_t pin)
     GPIO_Init(port, &gpio);
 }
 
+/**
+ * @brief 初始化上拉输入 GPIO。
+ */
 static void gpio_init_input_pullup(GPIO_TypeDef *port, uint16_t pin)
 {
     GPIO_InitTypeDef gpio;
@@ -19,6 +33,9 @@ static void gpio_init_input_pullup(GPIO_TypeDef *port, uint16_t pin)
     GPIO_Init(port, &gpio);
 }
 
+/**
+ * @brief 初始化 TB6612 方向脚、8 路循迹输入和板载 LED。
+ */
 void BSP_GPIO_InitAll(void)
 {
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO |
@@ -46,6 +63,9 @@ void BSP_GPIO_InitAll(void)
     BSP_LED_Set(0U);
 }
 
+/**
+ * @brief 写 GPIO 输出。
+ */
 void BSP_GPIO_Write(gpio_pin_t pin, uint8_t high)
 {
     if (high)
@@ -58,11 +78,18 @@ void BSP_GPIO_Write(gpio_pin_t pin, uint8_t high)
     }
 }
 
+/**
+ * @brief 读 GPIO 输入。
+ */
 uint8_t BSP_GPIO_Read(gpio_pin_t pin)
 {
     return GPIO_ReadInputDataBit(pin.port, pin.pin) ? 1U : 0U;
 }
 
+/**
+ * @brief 控制 PC13 板载 LED。
+ * @note BluePill 常见 PC13 低电平点亮。
+ */
 void BSP_LED_Set(uint8_t on)
 {
     if (on)
@@ -75,6 +102,9 @@ void BSP_LED_Set(uint8_t on)
     }
 }
 
+/**
+ * @brief 翻转 PC13 板载 LED。
+ */
 void BSP_LED_Toggle(void)
 {
     if (GPIO_ReadOutputDataBit(GPIOC, GPIO_Pin_13))

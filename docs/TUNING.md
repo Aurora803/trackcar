@@ -5,12 +5,12 @@
 初始参数：
 
 ```c
-#define LINE_BASE_PWM_FAST  430
-#define LINE_BASE_PWM_MID   370
-#define LINE_BASE_PWM_SLOW  310
-#define LINE_PID_KP         0.22f
+#define LINE_BASE_PWM_FAST  300
+#define LINE_BASE_PWM_MID   260
+#define LINE_BASE_PWM_SLOW  220
+#define LINE_PID_KP         0.16f
 #define LINE_PID_KI         0.00f
-#define LINE_PID_KD         0.006f
+#define LINE_PID_KD         0.004f
 ```
 
 调参顺序：
@@ -20,7 +20,7 @@
 3. 增大 `KP`，让小车能明显修正偏差；
 4. 如果弯道来回摆动，适当增加 `KD`；
 5. 如果过弯冲出，先降低 `LINE_BASE_PWM_FAST/MID/SLOW`；
-6. 如果直角弯转不过来，再调 `LINE_CORNER_ENCODER_TARGET`、`LINE_CORNER_INNER_PWM`、`LINE_CORNER_OUTER_PWM`；
+6. 当前 `LINE_CORNER_USE_ENCODER = 0`，直角弯先调 `LINE_CORNER_TIME_MS`、`LINE_CORNER_INNER_PWM`、`LINE_CORNER_OUTER_PWM`；
 7. 稳定后再考虑速度闭环。
 
 ## 2. 矩形赛道状态机
@@ -47,4 +47,4 @@
 
 ## 4. 编码器采样与速度闭环
 
-当前工程仍是 PWM 开环循迹，但 `Chassis_UpdateEncoder()` 已经挪到 10ms 控制周期内。这样做的目的不是现在立刻闭环，而是避免后续接速度 PID 时拿 50ms 遥测数据去算 10ms 控制速度。
+当前工程仍是 PWM 开环循迹，直角弯也暂时使用定时退出，但 `Chassis_UpdateEncoder()` 已经挪到 10ms 控制周期内。这样做的目的不是现在立刻闭环，而是避免后续接速度 PID 时拿 50ms 遥测数据去算 10ms 控制速度。

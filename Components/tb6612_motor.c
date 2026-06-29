@@ -1,3 +1,10 @@
+/**
+ * @file tb6612_motor.c
+ * @brief TB6612FNG 电机驱动适配层实现。
+ * @layer Components
+ *
+ * 这里绑定具体 TB6612 引脚和 PWM 通道，但不包含循迹、速度闭环或模式逻辑。
+ */
 #include "tb6612_motor.h"
 #include "bsp_gpio.h"
 #include "bsp_pwm.h"
@@ -13,6 +20,9 @@ static const gpio_pin_t AIN2_PIN = {TB6612_AIN2_PORT, TB6612_AIN2_PIN};
 static const gpio_pin_t BIN1_PIN = {TB6612_BIN1_PORT, TB6612_BIN1_PIN};
 static const gpio_pin_t BIN2_PIN = {TB6612_BIN2_PORT, TB6612_BIN2_PIN};
 
+/**
+ * @brief 根据速度正负设置 TB6612 IN1/IN2 方向脚。
+ */
 static void set_dir(gpio_pin_t in1, gpio_pin_t in2, int16_t speed)
 {
     if (speed > 0)
@@ -33,6 +43,9 @@ static void set_dir(gpio_pin_t in1, gpio_pin_t in2, int16_t speed)
     }
 }
 
+/**
+ * @brief 初始化电机 PWM，并让两路电机处于空转停止状态。
+ */
 void TB6612_Init(void)
 {
     BSP_PWM_MotorInit();
@@ -41,6 +54,12 @@ void TB6612_Init(void)
     TB6612_Coast(MOTOR_CHANNEL_RIGHT);
 }
 
+/**
+ * @brief 设置电机速度命令。
+ *
+ * speed_permille 会先按 MOTOR_PWM_MAX_PERMILLE 限幅，再根据左右电机反向宏
+ * 调整方向。实际安全限幅由 Chassis_SetPWM 在上层统一处理。
+ */
 void TB6612_SetSpeedPermille(motor_channel_t channel, int16_t speed_permille)
 {
     int16_t speed = clamp_i16(speed_permille, -MOTOR_PWM_MAX_PERMILLE, MOTOR_PWM_MAX_PERMILLE);
@@ -66,6 +85,9 @@ void TB6612_SetSpeedPermille(motor_channel_t channel, int16_t speed_permille)
     }
 }
 
+/**
+ * @brief 让指定通道进入 TB6612 短刹车。
+ */
 void TB6612_Brake(motor_channel_t channel)
 {
     if (channel == MOTOR_CHANNEL_LEFT)
@@ -82,6 +104,9 @@ void TB6612_Brake(motor_channel_t channel)
     }
 }
 
+/**
+ * @brief 让指定通道空转停止。
+ */
 void TB6612_Coast(motor_channel_t channel)
 {
     if (channel == MOTOR_CHANNEL_LEFT)
@@ -98,6 +123,9 @@ void TB6612_Coast(motor_channel_t channel)
     }
 }
 
+/**
+ * @brief 控制 TB6612 STBY。
+ */
 void TB6612_Standby(uint8_t enable_standby)
 {
 #if TB6612_STBY_CONTROL_BY_GPIO
@@ -118,6 +146,9 @@ static const motor_driver_t g_tb6612_driver =
     TB6612_Standby
 };
 
+/**
+ * @brief 返回 TB6612 的 motor_driver_t 适配对象。
+ */
 const motor_driver_t *TB6612_GetDriver(void)
 {
     return &g_tb6612_driver;

@@ -1,3 +1,11 @@
+/**
+ * @file vision_protocol.c
+ * @brief 视觉目标 ASCII 行协议解析。
+ * @layer Components
+ *
+ * 本层只处理串口字节流到 vision_target_t 的转换，不直接控制云台或底盘。
+ * 当前视觉串口接口临时复用 BSP_VisionUART_*，实际硬件串口分配由 BSP 层决定。
+ */
 #include "vision_protocol.h"
 #include "bsp_uart.h"
 #include <string.h>
@@ -8,12 +16,18 @@
 static char g_line_buf[VISION_LINE_BUF_SIZE];
 static uint8_t g_line_len = 0U;
 
+/**
+ * @brief 清空行缓冲。
+ */
 void VisionProtocol_Init(void)
 {
     g_line_len = 0U;
     memset(g_line_buf, 0, sizeof(g_line_buf));
 }
 
+/**
+ * @brief 解析单行 $T,x,y,valid 消息。
+ */
 static uint8_t parse_line(const char *line, vision_target_t *out_target, uint32_t now_ms)
 {
     char *endptr;
@@ -43,6 +57,9 @@ static uint8_t parse_line(const char *line, vision_target_t *out_target, uint32_
     return 1U;
 }
 
+/**
+ * @brief 从视觉串口非阻塞读取并解析目标消息。
+ */
 uint8_t VisionProtocol_Poll(vision_target_t *out_target, uint32_t now_ms)
 {
     char ch;

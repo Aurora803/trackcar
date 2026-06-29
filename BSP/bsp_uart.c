@@ -1,3 +1,11 @@
+/**
+ * @file bsp_uart.c
+ * @brief USART2 调试串口和预留视觉串口接口。
+ * @layer BSP
+ *
+ * 当前 PA2/PA3 用作 USART2 调试口。printf/fputc 采用阻塞发送，适合调试，
+ * 不适合作为高频实时日志。USART2 接收中断只把字节放入环形缓冲。
+ */
 #include "bsp_uart.h"
 #include "app_config.h"
 #include "stm32f10x.h"
@@ -13,6 +21,9 @@ static volatile uint16_t g_uart2_rx_tail = 0U;
 #error "VISION_UART_USE_USART1 is reserved: USART1_TX PA9 conflicts with TIM1_CH2 left motor PWM on current hardware."
 #endif
 
+/**
+ * @brief 初始化 USART2 TX/RX GPIO。
+ */
 static void uart_gpio_init(void)
 {
     GPIO_InitTypeDef gpio;
@@ -30,6 +41,9 @@ static void uart_gpio_init(void)
     GPIO_Init(GPIOA, &gpio);
 }
 
+/**
+ * @brief 初始化指定 USART 外设。
+ */
 static void uart_init_one(USART_TypeDef *uart, uint32_t baudrate)
 {
     USART_InitTypeDef usart;
@@ -44,6 +58,9 @@ static void uart_init_one(USART_TypeDef *uart, uint32_t baudrate)
     USART_Cmd(uart, ENABLE);
 }
 
+/**
+ * @brief 初始化 USART2 调试串口和 RXNE 中断。
+ */
 void BSP_UART_Init(void)
 {
     NVIC_InitTypeDef nvic;
@@ -62,6 +79,10 @@ void BSP_UART_Init(void)
     NVIC_Init(&nvic);
 }
 
+/**
+ * @brief 阻塞发送一个字符。
+ * @note 高频调用会占用主循环时间，控制周期敏感时应降低输出频率。
+ */
 void BSP_DebugUART_SendChar(char ch)
 {
     while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET)
@@ -71,6 +92,9 @@ void BSP_DebugUART_SendChar(char ch)
     USART_SendData(USART2, (uint16_t)ch);
 }
 
+/**
+ * @brief 阻塞发送字符串。
+ */
 void BSP_DebugUART_SendString(const char *str)
 {
     if (str == 0) return;
@@ -80,6 +104,9 @@ void BSP_DebugUART_SendString(const char *str)
     }
 }
 
+/**
+ * @brief 发送 name=value 调试行。
+ */
 void BSP_DebugUART_SendInt(const char *name, int32_t value)
 {
     char buf[48];
@@ -87,33 +114,51 @@ void BSP_DebugUART_SendInt(const char *name, int32_t value)
     BSP_DebugUART_SendString(buf);
 }
 
+/**
+ * @brief 兼容旧 UART1 命名的字符发送接口。
+ */
 void BSP_UART1_SendChar(char ch)
 {
     /* 兼容旧接口名：当前调试串口实际是 USART2。新代码优先使用 BSP_DebugUART_*。 */
     BSP_DebugUART_SendChar(ch);
 }
 
+/**
+ * @brief 兼容旧 UART1 命名的字符串发送接口。
+ */
 void BSP_UART1_SendString(const char *str)
 {
     BSP_DebugUART_SendString(str);
 }
 
+/**
+ * @brief 兼容旧 UART1 命名的整数调试接口。
+ */
 void BSP_UART1_SendInt(const char *name, int32_t value)
 {
     BSP_DebugUART_SendInt(name, value);
 }
 
+/**
+ * @brief 视觉串口发送字符预留接口。
+ */
 void BSP_VisionUART_SendChar(char ch)
 {
     /* 本版不启用独立视觉串口，接口临时复用 USART2 调试通道。 */
     BSP_DebugUART_SendChar(ch);
 }
 
+/**
+ * @brief 视觉串口发送字符串预留接口。
+ */
 void BSP_VisionUART_SendString(const char *str)
 {
     BSP_DebugUART_SendString(str);
 }
 
+/**
+ * @brief 从 USART2 环形缓冲非阻塞读取一个字节。
+ */
 int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
 {
     if (out_ch == 0) return 0;
@@ -128,6 +173,11 @@ int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
     return 1;
 }
 
+/**
+ * @brief USART2 RXNE 中断处理。
+ *
+ * 中断内只读接收寄存器并写入环形缓冲，不做 printf、协议解析或控制逻辑。
+ */
 void BSP_UART2_IRQHandler(void)
 {
     if (USART_GetITStatus(USART2, USART_IT_RXNE) != RESET)
@@ -144,6 +194,9 @@ void BSP_UART2_IRQHandler(void)
 }
 
 #if defined(__GNUC__)
+/**
+ * @brief GCC newlib 的 write 重定向到调试串口。
+ */
 int _write(int file, char *ptr, int len)
 {
     int i;
@@ -156,6 +209,9 @@ int _write(int file, char *ptr, int len)
 }
 #endif
 
+/**
+ * @brief printf/fputc 重定向到调试串口。
+ */
 int fputc(int ch, FILE *f)
 {
     (void)f;

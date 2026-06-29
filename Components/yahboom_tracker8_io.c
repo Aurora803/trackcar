@@ -1,9 +1,18 @@
+/**
+ * @file yahboom_tracker8_io.c
+ * @brief Yahboom 8 路循迹模块 GPIO 采样实现。
+ * @layer Components
+ *
+ * 本文件只负责从 GPIO 读 8 路传感器、按 TRACKER_BLACK_ACTIVE_LOW 转换有效电平、
+ * 按权重计算位置误差。直角弯、丢线恢复和 PID 控制不在这里实现。
+ */
 #include "yahboom_tracker8_io.h"
 #include "bsp_gpio.h"
 #include "app_config.h"
 
 static int16_t g_last_valid_error = 0;
 
+/* X1~X8 从车头视角左到右排列，bit0 对应最左侧 X1。 */
 static const gpio_pin_t g_tracker_pins[TRACKER_SENSOR_COUNT] =
 {
     {GPIOB, GPIO_Pin_11},  /* X1：最左 */
@@ -16,6 +25,7 @@ static const gpio_pin_t g_tracker_pins[TRACKER_SENSOR_COUNT] =
     {GPIOA, GPIO_Pin_4}    /* X8：最右 */
 };
 
+/* 误差权重：左侧为负，右侧为正。权重大小决定纠偏响应强度。 */
 static const int16_t g_tracker_weights[TRACKER_SENSOR_COUNT] =
 {
     TRACKER_WEIGHT_0,
@@ -28,11 +38,20 @@ static const int16_t g_tracker_weights[TRACKER_SENSOR_COUNT] =
     TRACKER_WEIGHT_7
 };
 
+/**
+ * @brief 初始化最近一次有效误差。
+ */
 void YahboomTracker8IO_Init(void)
 {
     g_last_valid_error = 0;
 }
 
+/**
+ * @brief 读取 8 路 GPIO 并计算循迹误差。
+ *
+ * 当没有任何传感器检测到黑线时返回 TRACKER_STATUS_LOST，并保留 last_valid_error，
+ * 供 BLIND 状态判断应该向哪一侧找线。
+ */
 tracker8_sample_t YahboomTracker8IO_Read(void)
 {
     tracker8_sample_t sample;
@@ -93,6 +112,9 @@ static const tracker8_driver_t g_tracker_driver =
     YahboomTracker8IO_Read
 };
 
+/**
+ * @brief 返回 Yahboom 8 路传感器的 tracker8_driver_t 适配对象。
+ */
 const tracker8_driver_t *YahboomTracker8IO_GetDriver(void)
 {
     return &g_tracker_driver;

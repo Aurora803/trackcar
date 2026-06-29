@@ -26,6 +26,12 @@
 #include "bsp_systick.h"
 #include "bsp_uart.h"
 
+/*
+ * 工程自定义说明：
+ * 本文件属于 User/中断层。SysTick 只递增 1ms tick，USART2 中断只转发到 BSP
+ * 接收缓冲处理；不要在中断中加入 PID、printf 或电机控制等耗时逻辑。
+ */
+
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
   */
@@ -59,7 +65,7 @@ static void Fault_Motor_Shutdown(void)
     TIM1->CCR1 = 0;
     TIM1->CCR2 = 0;
 
-    /* PB12~PB15 方向脚全部拉低，电机驱动芯片进入刹车/高阻态。 */
+    /* PB12~PB15 方向脚全部拉低，电机驱动芯片进入停止态。 */
     GPIOB->BRR = (uint32_t)(GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15);
 }
 

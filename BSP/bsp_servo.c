@@ -1,3 +1,11 @@
+/**
+ * @file bsp_servo.c
+ * @brief 舵机 PWM 底层预留实现。
+ * @layer BSP
+ *
+ * 当前接线没有安全的二维云台 PWM 输出方案，APP_ENABLE_GIMBAL_SERVO 默认为 0。
+ * 若强行启用，本文件会用 #error 阻止编译，防止误复用 TIM1 电机 PWM 资源。
+ */
 #include "bsp_servo.h"
 #include "app_config.h"
 #include "common_types.h"
@@ -15,6 +23,9 @@
 
 #if APP_ENABLE_GIMBAL_SERVO
 #error "当前接线图未给二维云台分配安全的硬件 PWM 引脚。请先重新规划云台 PWM 引脚或改用 PCA9685。"
+/**
+ * @brief 将 0~180 度映射到 0.5ms~2.5ms 脉宽。
+ */
 static uint16_t angle_to_pulse(float angle_deg)
 {
     float us;
@@ -24,6 +35,11 @@ static uint16_t angle_to_pulse(float angle_deg)
 }
 #endif
 
+/**
+ * @brief 初始化舵机 PWM。
+ *
+ * 默认宏关闭时为空操作。打开前需重新规划硬件资源。
+ */
 void BSP_Servo_Init(void)
 {
 #if APP_ENABLE_GIMBAL_SERVO
@@ -65,6 +81,9 @@ void BSP_Servo_Init(void)
 #endif
 }
 
+/**
+ * @brief 设置舵机角度。
+ */
 void BSP_Servo_SetAngleDeg(uint8_t channel, float angle_deg)
 {
 #if APP_ENABLE_GIMBAL_SERVO
