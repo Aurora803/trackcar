@@ -102,13 +102,10 @@ static int8_t detect_corner_dir(const tracker8_sample_t *sample)
     right_count = count_bits4((uint8_t)((sample->raw_bits >> 4) & 0x0FU));
 
     /* 矩形赛道直角弯：一侧 3~4 路连续压线，另一侧很少压线。 */
-    if (left_count >= 3U && right_count <= 1U)
+    if ((left_count >= 3U && right_count <= 1U) ||
+        (right_count >= 3U && left_count <= 1U))
     {
-        return -1;
-    }
-    if (right_count >= 3U && left_count <= 1U)
-    {
-        return 1;
+        return (RECT_DEFAULT_CORNER_DIR >= 0) ? 1 : -1;
     }
 
 #if RECT_ENABLE_CROSS_CORNER

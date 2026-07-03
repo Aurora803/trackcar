@@ -90,11 +90,11 @@ extern "C" {
  * 如果传感器能明确看到左/右侧直角，代码会优先采用传感器判断；
  * 如果出现 6 路以上同时触发这种“横线/宽黑线”特征，则按这里的默认方向转。
  */
-#define RECT_DEFAULT_CORNER_DIR        1
+#define RECT_DEFAULT_CORNER_DIR        (-1)
 /* 0：不把 6 路以上同时触发直接当作直角弯，避免宽黑线/反光误触发。
  * 矩形调稳后，如果你的赛道直角处经常是整排横线，可再改成 1。
  */
-#define RECT_ENABLE_CROSS_CORNER       0
+#define RECT_ENABLE_CROSS_CORNER       1
 
 /* START 状态上电稳定时间。 */
 #define LINE_START_STABLE_MS           200U
@@ -103,37 +103,37 @@ extern "C" {
 /* BLIND/LOST 中连续重新看到线达到该时间后进入 RECOVER。 */
 #define LINE_BLIND_REACQUIRE_MS        40U
 /* BLIND 搜索超时后进入 LOST 停车等待。 */
-#define LINE_BLIND_TIMEOUT_MS          600U
+#define LINE_BLIND_TIMEOUT_MS          1200U
 /* RECOVER 低速平滑恢复时间。 */
-#define LINE_RECOVER_MS                160U
+#define LINE_RECOVER_MS                180U
 /* CORNER 最短保持时间，避免刚进入直角就被中心压线误判退出。 */
-#define LINE_CORNER_MIN_MS             180U
+#define LINE_CORNER_MIN_MS             260U
 /* CORNER 超时后退回 BLIND 找线。 */
 #define LINE_CORNER_TIMEOUT_MS         700U
 /* 当前你的串口 LE/RE/SUM 一直为 0，说明编码器反馈未通。
  * 先用定时直角弯跑通矩形；后续编码器修好后改成 1。
  */
 /* 1：直角弯优先按编码器累计退出；0：编码器未确认前按固定时间退出。 */
-#define LINE_CORNER_USE_ENCODER        0
+#define LINE_CORNER_USE_ENCODER        1
 /* LINE_CORNER_USE_ENCODER=0 时的直角弯定时退出时间，单位 ms，需要实车低速微调。 */
-#define LINE_CORNER_TIME_MS            330U
+#define LINE_CORNER_TIME_MS            520U
 #define LINE_CORNER_ENCODER_TARGET     550
 #define LINE_CORNER_CENTER_ENABLE_ENCODER 420  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
-#define LINE_CORNER_DEBOUNCE_COUNT     2U  /* 连续检测到同向直角特征后才切入转角状态。 */
+#define LINE_CORNER_DEBOUNCE_COUNT     4U  /* 连续检测到同向直角特征后才切入转角状态。 */
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   450
 
 /* 循迹基础 PWM：误差越小使用越快的档位，误差越大自动降速。 */
-#define LINE_BASE_PWM_FAST             300
-#define LINE_BASE_PWM_MID              260
-#define LINE_BASE_PWM_SLOW             220
+#define LINE_BASE_PWM_FAST             260
+#define LINE_BASE_PWM_MID              230
+#define LINE_BASE_PWM_SLOW             200
 /* 转弯恢复、丢线搜索、直角弯专用 PWM。方向和实际速度需要实车低速验证。 */
 #define LINE_RECOVER_PWM               220
 #define LINE_BLIND_BASE_PWM            90
 #define LINE_BLIND_TURN_PWM            220
-#define LINE_CORNER_INNER_PWM          80
-#define LINE_CORNER_OUTER_PWM          300
+#define LINE_CORNER_INNER_PWM          60
+#define LINE_CORNER_OUTER_PWM          320
 
 /* 权重单位越大，转向响应越强。左负右正。 */
 #define TRACKER_WEIGHT_0               (-1200)
