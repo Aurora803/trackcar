@@ -31,6 +31,146 @@ static uint32_t g_last_led_ms = 0U;
 static int32_t g_telemetry_left_encoder_accum = 0;
 static int32_t g_telemetry_right_encoder_accum = 0;
 
+#if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
+typedef enum
+{
+    MOTOR_TEST_PHASE_WAIT = 0,
+    MOTOR_TEST_PHASE_BOTH,
+    MOTOR_TEST_PHASE_STOP_AFTER_BOTH,
+    MOTOR_TEST_PHASE_LEFT,
+    MOTOR_TEST_PHASE_STOP_AFTER_LEFT,
+    MOTOR_TEST_PHASE_RIGHT,
+    MOTOR_TEST_PHASE_STOP_AFTER_RIGHT
+} motor_test_phase_t;
+
+static motor_test_phase_t g_motor_test_phase = MOTOR_TEST_PHASE_WAIT;
+static uint32_t g_motor_test_phase_start_ms = 0U;
+static uint32_t g_motor_test_cycle = 0U;
+static int16_t g_motor_test_left_cmd = 0;
+static int16_t g_motor_test_right_cmd = 0;
+static int32_t g_motor_test_left_abs_sum = 0;
+static int32_t g_motor_test_right_abs_sum = 0;
+static int32_t g_telemetry_left_encoder_abs_accum = 0;
+static int32_t g_telemetry_right_encoder_abs_accum = 0;
+
+static int32_t abs_i32_local(int32_t value)
+{
+    return (value < 0) ? -value : value;
+}
+
+static const char *motor_test_phase_name(motor_test_phase_t phase)
+{
+    switch (phase)
+    {
+    case MOTOR_TEST_PHASE_WAIT:
+        return "WAIT";
+    case MOTOR_TEST_PHASE_BOTH:
+        return "BOTH";
+    case MOTOR_TEST_PHASE_STOP_AFTER_BOTH:
+        return "STOP_BOTH";
+    case MOTOR_TEST_PHASE_LEFT:
+        return "LEFT";
+    case MOTOR_TEST_PHASE_STOP_AFTER_LEFT:
+        return "STOP_LEFT";
+    case MOTOR_TEST_PHASE_RIGHT:
+        return "RIGHT";
+    case MOTOR_TEST_PHASE_STOP_AFTER_RIGHT:
+        return "STOP_RIGHT";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static uint32_t motor_test_phase_duration_ms(motor_test_phase_t phase)
+{
+    switch (phase)
+    {
+    case MOTOR_TEST_PHASE_WAIT:
+        return MOTOR_TEST_START_DELAY_MS;
+    case MOTOR_TEST_PHASE_BOTH:
+    case MOTOR_TEST_PHASE_LEFT:
+    case MOTOR_TEST_PHASE_RIGHT:
+        return MOTOR_TEST_RUN_MS;
+    default:
+        return MOTOR_TEST_STOP_MS;
+    }
+}
+
+static void motor_test_enter_phase(motor_test_phase_t phase, uint32_t now)
+{
+    g_motor_test_phase = phase;
+    g_motor_test_phase_start_ms = now;
+    g_motor_test_left_abs_sum = 0;
+    g_motor_test_right_abs_sum = 0;
+
+    switch (phase)
+    {
+    case MOTOR_TEST_PHASE_BOTH:
+        g_motor_test_cycle++;
+        g_motor_test_left_cmd = MOTOR_TEST_PWM;
+        g_motor_test_right_cmd = MOTOR_TEST_PWM;
+        Chassis_SetPWM(g_motor_test_left_cmd, g_motor_test_right_cmd);
+        break;
+
+    case MOTOR_TEST_PHASE_LEFT:
+        g_motor_test_left_cmd = MOTOR_TEST_PWM;
+        g_motor_test_right_cmd = 0;
+        Chassis_SetPWM(g_motor_test_left_cmd, g_motor_test_right_cmd);
+        break;
+
+    case MOTOR_TEST_PHASE_RIGHT:
+        g_motor_test_left_cmd = 0;
+        g_motor_test_right_cmd = MOTOR_TEST_PWM;
+        Chassis_SetPWM(g_motor_test_left_cmd, g_motor_test_right_cmd);
+        break;
+
+    default:
+        g_motor_test_left_cmd = 0;
+        g_motor_test_right_cmd = 0;
+        Chassis_StopCoast();
+        break;
+    }
+
+    printf("MT_PHASE CYCLE=%lu PH=%s LPWM=%d RPWM=%d\r\n",
+           (unsigned long)g_motor_test_cycle,
+           motor_test_phase_name(g_motor_test_phase),
+           (int)g_motor_test_left_cmd,
+           (int)g_motor_test_right_cmd);
+}
+
+static motor_test_phase_t motor_test_next_phase(motor_test_phase_t phase)
+{
+    switch (phase)
+    {
+    case MOTOR_TEST_PHASE_WAIT:
+        return MOTOR_TEST_PHASE_BOTH;
+    case MOTOR_TEST_PHASE_BOTH:
+        return MOTOR_TEST_PHASE_STOP_AFTER_BOTH;
+    case MOTOR_TEST_PHASE_STOP_AFTER_BOTH:
+        return MOTOR_TEST_PHASE_LEFT;
+    case MOTOR_TEST_PHASE_LEFT:
+        return MOTOR_TEST_PHASE_STOP_AFTER_LEFT;
+    case MOTOR_TEST_PHASE_STOP_AFTER_LEFT:
+        return MOTOR_TEST_PHASE_RIGHT;
+    case MOTOR_TEST_PHASE_RIGHT:
+        return MOTOR_TEST_PHASE_STOP_AFTER_RIGHT;
+    case MOTOR_TEST_PHASE_STOP_AFTER_RIGHT:
+    default:
+        return MOTOR_TEST_PHASE_BOTH;
+    }
+}
+
+static void motor_test_update(uint32_t now)
+{
+    uint32_t elapsed = now - g_motor_test_phase_start_ms;
+
+    if (elapsed >= motor_test_phase_duration_ms(g_motor_test_phase))
+    {
+        motor_test_enter_phase(motor_test_next_phase(g_motor_test_phase), now);
+    }
+}
+#endif
+
 /**
  * @brief 输出当前调试遥测。
  *
@@ -39,8 +179,46 @@ static int32_t g_telemetry_right_encoder_accum = 0;
  */
 static void telemetry_output(void)
 {
-    line_follow_debug_t dbg = AppLineFollow_GetDebug();
     chassis_state_t ch = Chassis_GetState();
+    line_follow_debug_t dbg;
+#if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
+    int32_t diff_percent;
+
+    if (g_mode == ROBOT_MODE_MOTOR_TEST)
+    {
+        if (g_motor_test_right_abs_sum > 0)
+        {
+            diff_percent = ((g_motor_test_left_abs_sum - g_motor_test_right_abs_sum) * 100L) /
+                           g_motor_test_right_abs_sum;
+        }
+        else
+        {
+            diff_percent = 0;
+        }
+
+        printf("MT CYCLE=%lu PH=%s T=%lu LPWM=%d RPWM=%d LE=%ld RE=%ld LA=%ld RA=%ld LSUM=%ld RSUM=%ld DIFF=%ld%%\r\n",
+               (unsigned long)g_motor_test_cycle,
+               motor_test_phase_name(g_motor_test_phase),
+               (unsigned long)(BSP_GetTickMs() - g_motor_test_phase_start_ms),
+               (int)g_motor_test_left_cmd,
+               (int)g_motor_test_right_cmd,
+               (long)g_telemetry_left_encoder_accum,
+               (long)g_telemetry_right_encoder_accum,
+               (long)g_telemetry_left_encoder_abs_accum,
+               (long)g_telemetry_right_encoder_abs_accum,
+               (long)g_motor_test_left_abs_sum,
+               (long)g_motor_test_right_abs_sum,
+               (long)diff_percent);
+
+        g_telemetry_left_encoder_accum = 0;
+        g_telemetry_right_encoder_accum = 0;
+        g_telemetry_left_encoder_abs_accum = 0;
+        g_telemetry_right_encoder_abs_accum = 0;
+        return;
+    }
+#endif
+
+    dbg = AppLineFollow_GetDebug();
 
     printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u\r\n",
            (int)g_mode,
@@ -57,6 +235,10 @@ static void telemetry_output(void)
 
     g_telemetry_left_encoder_accum = 0;
     g_telemetry_right_encoder_accum = 0;
+#if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
+    g_telemetry_left_encoder_abs_accum = 0;
+    g_telemetry_right_encoder_abs_accum = 0;
+#endif
 }
 
 /**
@@ -74,7 +256,12 @@ void AppRobot_Init(void)
     BSP_SysTick_Init();
     BSP_UART_Init();
 
+#if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
+    printf("\r\n[BOOT] STM32F103 motor speed test demo\r\n");
+    printf("[BOOT] Lift the car. Set APP_ENABLE_MOTOR_SPEED_TEST_DEMO=0 to return line follow.\r\n");
+#else
     printf("\r\n[BOOT] STM32F103 rectangle line car demo\r\n");
+#endif
 
     Chassis_Init(TB6612_GetDriver());
     AppLineFollow_Init(YahboomTracker8IO_GetDriver());
@@ -87,10 +274,16 @@ void AppRobot_Init(void)
 #endif
 #endif
 
-    g_mode = ROBOT_MODE_LINE_FOLLOW;
     g_last_control_ms = BSP_GetTickMs();
     g_last_telemetry_ms = g_last_control_ms;
     g_last_led_ms = g_last_control_ms;
+
+#if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
+    g_mode = ROBOT_MODE_MOTOR_TEST;
+    motor_test_enter_phase(MOTOR_TEST_PHASE_WAIT, g_last_control_ms);
+#else
+    g_mode = ROBOT_MODE_LINE_FOLLOW;
+#endif
 }
 
 /**
@@ -116,6 +309,15 @@ void AppRobot_Task(void)
             chassis_state_t ch = Chassis_GetState();
             g_telemetry_left_encoder_accum += ch.left_encoder_delta;
             g_telemetry_right_encoder_accum += ch.right_encoder_delta;
+#if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
+            g_telemetry_left_encoder_abs_accum += abs_i32_local((int32_t)ch.left_encoder_delta);
+            g_telemetry_right_encoder_abs_accum += abs_i32_local((int32_t)ch.right_encoder_delta);
+            if (g_mode == ROBOT_MODE_MOTOR_TEST)
+            {
+                g_motor_test_left_abs_sum += abs_i32_local((int32_t)ch.left_encoder_delta);
+                g_motor_test_right_abs_sum += abs_i32_local((int32_t)ch.right_encoder_delta);
+            }
+#endif
         }
 
         switch (g_mode)
@@ -131,6 +333,14 @@ void AppRobot_Task(void)
             Chassis_StopCoast();
 #if APP_ENABLE_VISION_TARGET
             AppVisionTarget_Update(now);
+#endif
+            break;
+
+        case ROBOT_MODE_MOTOR_TEST:
+#if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
+            motor_test_update(now);
+#else
+            Chassis_StopCoast();
 #endif
             break;
 

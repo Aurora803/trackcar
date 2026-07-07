@@ -25,11 +25,18 @@ extern "C" {
 /* 主控制周期，单位 ms。当前循迹状态机、编码器采样与未来速度闭环都按此周期调度。 */
 #define APP_CONTROL_PERIOD_MS          10U
 /* 串口遥测周期，单位 ms。当前 printf 为阻塞发送，周期过短会占用主循环时间。 */
-#define APP_TELEMETRY_PERIOD_MS        50U
+#define APP_TELEMETRY_PERIOD_MS        500U
+
+/* 1: boot into wheel speed test demo. Lift the car before flashing/running. */
+#define APP_ENABLE_MOTOR_SPEED_TEST_DEMO 0
+#define MOTOR_TEST_PWM                 260
+#define MOTOR_TEST_START_DELAY_MS      2000U
+#define MOTOR_TEST_RUN_MS              3000U
+#define MOTOR_TEST_STOP_MS             1000U
 
 /* ===================== 串口参数 ===================== */
 /* 当前调试口实际为 USART2(PA2/PA3)，保留 DEBUG 命名避免上层关心具体串口号。 */
-#define DEBUG_UART_BAUDRATE            115200U
+#define DEBUG_UART_BAUDRATE            9600U
 /* 视觉协议预留波特率；当前未分配独立视觉串口。 */
 #define VISION_UART_BAUDRATE           115200U
 
@@ -105,7 +112,7 @@ extern "C" {
 /* BLIND 搜索超时后进入 LOST 停车等待。 */
 #define LINE_BLIND_TIMEOUT_MS          1200U
 /* RECOVER 低速平滑恢复时间。 */
-#define LINE_RECOVER_MS                180U
+#define LINE_RECOVER_MS                320U
 /* CORNER 最短保持时间，避免刚进入直角就被中心压线误判退出。 */
 #define LINE_CORNER_MIN_MS             260U
 /* CORNER 超时后退回 BLIND 找线。 */
@@ -119,7 +126,9 @@ extern "C" {
 #define LINE_CORNER_TIME_MS            520U
 #define LINE_CORNER_ENCODER_TARGET     550
 #define LINE_CORNER_CENTER_ENABLE_ENCODER 420  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
-#define LINE_CORNER_DEBOUNCE_COUNT     4U  /* 连续检测到同向直角特征后才切入转角状态。 */
+#define LINE_CORNER_DEBOUNCE_COUNT     6U  /* 连续检测到同向直角特征后才切入转角状态。 */
+#define LINE_CORNER_REARM_MS           700U
+#define LINE_CORNER_REARM_CENTER_MS    200U
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   450

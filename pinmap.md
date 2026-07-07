@@ -24,8 +24,8 @@ Design assumptions for this draft:
 |---|---|---|---|---|---|---|---|
 | PA0 | LEFT_ENC_A | motor 0 encoder A | Input | Pull-up | TIM2_CH1 | Left encoder | Quadrature encoder input |
 | PA1 | LEFT_ENC_B | motor 0 encoder B | Input | Pull-up | TIM2_CH2 | Left encoder | Quadrature encoder input |
-| PA2 | USART2_TX | USART2 TX | Output | AF push-pull | USART2_TX | Debug UART | 115200 8N1 |
-| PA3 | USART2_RX | USART2 RX | Input | Floating | USART2_RX | Debug UART | 115200 8N1 |
+| PA2 | USART2_TX | USART2 TX | Output | AF push-pull | USART2_TX | Debug UART | 9600 8N1 |
+| PA3 | USART2_RX | USART2 RX | Input | Floating | USART2_RX | Debug UART | 9600 8N1 |
 | PA4 | TRACK_X8 | TRACK_X8 | Input | Pull-up | GPIO | Track sensor | Rightmost sensor |
 | PA5 | TRACK_X7 | TRACK_X7 | Input | Pull-up | GPIO | Track sensor | Digital input |
 | PA6 | TRACK_X6 | TRACK_X6 | Input | Pull-up | GPIO | Track sensor | Digital input |
@@ -58,7 +58,7 @@ Design assumptions for this draft:
 | TIM2 | Left wheel quadrature encoder | PA0, PA1 | Encoder mode TI12 |
 | TIM3 | Reserved | none | 当前代码未占用。后续云台可评估 TIM3 部分重映射到 PB4/PB5，但不能占用已接循迹的 PB0/PB1 |
 | TIM4 | Right wheel quadrature encoder | PB6, PB7 | Encoder mode TI12 |
-| USART2 | Debug UART | PA2, PA3 | 115200, 8N1, no flow control |
+| USART2 | Debug UART | PA2, PA3 | 9600, 8N1, no flow control |
 | SysTick | 1 ms system tick | none | `SysTick_Handler` 调用 `BSP_SysTick_Inc()`，主循环按毫秒轮询调度控制/遥测/LED |
 | ADC | Not used | none | No user-level initialization found |
 | I2C | Not used | none | No user-level initialization found |
@@ -76,4 +76,3 @@ Design assumptions for this draft:
 | PA9 | Left PWM | USART1_TX |
 | PA2/PA3 | Debug UART / reserved vision UART | OpenMV/RPi UART | 当前只有一组可用 USART2，调试 USB-TTL 与视觉数据不能同时独立连接 |
 | PB4/PB5 | Currently free when JTAG disabled | Future TIM3_CH1/CH2 servo PWM | 需使用 TIM3 部分重映射；保持 PB0/PB1 继续给循迹 X4/X3 |
-

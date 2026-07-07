@@ -63,7 +63,7 @@ BSP/
 | 电机 PWM | TIM1_CH1 PA8 右电机，TIM1_CH2 PA9 左电机 |
 | 编码器 | TIM2 PA0/PA1 左编码器，TIM4 PB6/PB7 右编码器 |
 | 循迹传感器 | 8 路数字输入，X1 到 X8 |
-| 调试串口 | USART2 PA2/PA3，115200 8N1 |
+| 调试串口 | USART2 PA2/PA3，9600 8N1 |
 | 系统节拍 | SysTick 1 ms |
 
 完整引脚表见 [`pinmap.md`](pinmap.md)。

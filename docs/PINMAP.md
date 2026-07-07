@@ -64,7 +64,7 @@ PWM 参数：TIM1，1 kHz，PSC=71，ARR=999，占空比 0~1000。
 | PA3 | USART2_RX | 接 USB-TTL TX |
 | GND | GND | 接 USB-TTL GND |
 
-参数：115200，8N1，无流控。
+参数：9600，8N1，无流控。
 
 > PA2/PA3 也是后续 OpenMV/树莓派视觉串口最可能复用的位置。当前 STM32F103C8T6 接线下没有第二组不冲突的硬件 UART，调试 USB-TTL 和视觉主机不能同时独立占用 USART2。
 

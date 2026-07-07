@@ -28,6 +28,9 @@ static int32_t g_corner_encoder_sum = 0;
 static uint16_t g_corner_count = 0U;
 static int8_t g_corner_candidate_dir = 0;
 static uint8_t g_corner_candidate_count = 0U;
+static uint32_t g_corner_rearm_ms = 0U;
+static uint32_t g_corner_rearm_center_ms = 0U;
+static uint8_t g_corner_armed = 1U;
 
 static int32_t abs_i32(int32_t value)
 {
@@ -102,10 +105,19 @@ static int8_t detect_corner_dir(const tracker8_sample_t *sample)
     right_count = count_bits4((uint8_t)((sample->raw_bits >> 4) & 0x0FU));
 
     /* 矩形赛道直角弯：一侧 3~4 路连续压线，另一侧很少压线。 */
-    if ((left_count >= 3U && right_count <= 1U) ||
-        (right_count >= 3U && left_count <= 1U))
+    if (RECT_DEFAULT_CORNER_DIR < 0)
     {
-        return (RECT_DEFAULT_CORNER_DIR >= 0) ? 1 : -1;
+        if (left_count >= 3U && right_count <= 1U)
+        {
+            return -1;
+        }
+    }
+    else
+    {
+        if (right_count >= 3U && left_count <= 1U)
+        {
+            return 1;
+        }
     }
 
 #if RECT_ENABLE_CROSS_CORNER
@@ -271,7 +283,7 @@ static void handle_follow(const tracker8_sample_t *sample, uint32_t dt_ms)
     int8_t corner_dir;
     int16_t base_pwm;
 
-    corner_dir = detect_corner_dir(sample);
+    corner_dir = (g_corner_armed != 0U) ? detect_corner_dir(sample) : 0;
     if (corner_dir != 0)
     {
         if (corner_dir_confirmed(corner_dir))
@@ -315,7 +327,7 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     g_state_time_ms += dt_ms;
 
-    if (tracker_is_valid(sample))
+    if (tracker_center_found(sample))
     {
         g_reacquire_time_ms += dt_ms;
         if (g_reacquire_time_ms >= LINE_BLIND_REACQUIRE_MS)
@@ -405,6 +417,9 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
         {
             g_corner_count++;
         }
+        g_corner_rearm_ms = LINE_CORNER_REARM_MS;
+        g_corner_rearm_center_ms = 0U;
+        g_corner_armed = 0U;
         enter_state(LINE_STATE_RECOVER);
         return;
     }
@@ -503,6 +518,9 @@ void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
     g_corner_dir = 0;
     g_corner_encoder_sum = 0;
     g_corner_count = 0U;
+    g_corner_rearm_ms = 0U;
+    g_corner_rearm_center_ms = 0U;
+    g_corner_armed = 1U;
     reset_corner_debounce();
 }
 
@@ -524,6 +542,35 @@ void AppLineFollow_Update(uint32_t dt_ms)
 
     sample = g_tracker->read();
     g_debug.tracker = sample;
+
+    if (g_corner_armed == 0U)
+    {
+        if (g_corner_rearm_ms > 0U)
+        {
+            if (dt_ms >= g_corner_rearm_ms)
+            {
+                g_corner_rearm_ms = 0U;
+            }
+            else
+            {
+                g_corner_rearm_ms -= dt_ms;
+            }
+        }
+
+        if (g_corner_rearm_ms == 0U && tracker_center_found(&sample))
+        {
+            g_corner_rearm_center_ms += dt_ms;
+            if (g_corner_rearm_center_ms >= LINE_CORNER_REARM_CENTER_MS)
+            {
+                g_corner_armed = 1U;
+                g_corner_rearm_center_ms = 0U;
+            }
+        }
+        else if (g_corner_rearm_ms == 0U)
+        {
+            g_corner_rearm_center_ms = 0U;
+        }
+    }
 
     switch (g_state)
     {
