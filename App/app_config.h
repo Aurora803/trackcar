@@ -139,7 +139,7 @@ extern "C" {
 #define LINE_BASE_PWM_MID              230
 #define LINE_BASE_PWM_SLOW             200
 /* 转弯恢复、丢线搜索、直角弯专用 PWM。方向和实际速度需要实车低速验证。 */
-#define LINE_RECOVER_PWM               190
+#define LINE_RECOVER_PWM               220
 #define LINE_BLIND_BASE_PWM            90
 #define LINE_BLIND_TURN_PWM            220
 #define LINE_CORNER_INNER_PWM          60
@@ -160,9 +160,9 @@ extern "C" {
 /* ===================== 循迹 PID 初值 ===================== */
 #define LINE_BASE_PWM                  LINE_BASE_PWM_MID
 /* 循迹应用层输出限幅。底盘层还会用 CHASSIS_PWM_LIMIT 做最终安全限幅。
- * 当前两者相同；后续若统一限幅策略，优先保留 chassis.c 的安全限幅。
+ * 这里单独收紧循迹输出，避免出弯恢复时产生过大的单轮 PWM。
  */
-#define LINE_PWM_LIMIT                 CHASSIS_PWM_LIMIT
+#define LINE_PWM_LIMIT                 380
 /* PID 输入是循迹位置误差，输出是左右轮差速修正量。KP 决定纠偏力度。 */
 #define LINE_PID_KP                    0.16f
 /* 当前保持 KI=0，相当于 PD 控制，避免积分在丢线或直角弯前后累积。 */
@@ -170,7 +170,7 @@ extern "C" {
 /* KD 抑制蛇形摆动；过大可能放大传感器抖动。 */
 #define LINE_PID_KD                    0.004f
 /* PID 输出和积分项限幅，避免丢线/大误差时积分或差速过大。 */
-#define LINE_PID_OUT_LIMIT             120.0f
+#define LINE_PID_OUT_LIMIT             160.0f
 #define LINE_PID_INTEGRAL_LIMIT        800.0f
 
 /* ===================== 视觉/云台预留 ===================== */
