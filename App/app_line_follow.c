@@ -32,6 +32,7 @@ static uint32_t g_corner_rearm_ms = 0U;
 static uint32_t g_corner_rearm_center_ms = 0U;
 static uint32_t g_corner_center_search_ms = 0U;
 static uint8_t g_corner_armed = 1U;
+static int8_t g_blind_search_dir = 0;
 
 static int32_t abs_i32(int32_t value)
 {
@@ -173,6 +174,11 @@ static void enter_state(line_follow_state_t next_state)
     g_lost_time_ms = 0U;
     g_reacquire_time_ms = 0U;
     reset_corner_debounce();
+
+    if (next_state != LINE_STATE_BLIND)
+    {
+        g_blind_search_dir = 0;
+    }
 
     if (next_state == LINE_STATE_FOLLOW || next_state == LINE_STATE_RECOVER)
     {
@@ -329,6 +335,22 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     g_state_time_ms += dt_ms;
 
+    if (g_blind_search_dir == 0)
+    {
+        if (sample->last_valid_error > 0)
+        {
+            g_blind_search_dir = 1;
+        }
+        else if (sample->last_valid_error < 0)
+        {
+            g_blind_search_dir = -1;
+        }
+        else
+        {
+            g_blind_search_dir = (RECT_DEFAULT_CORNER_DIR >= 0) ? 1 : -1;
+        }
+    }
+
     if (tracker_center_found(sample))
     {
         g_reacquire_time_ms += dt_ms;
@@ -350,9 +372,9 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 
     /* 丢线搜索先不用反转轮，避免 LPWM=-140/RPWM=500 这种猛甩头。
-     * last_valid_error 左负右正：线最后在右侧就向右找，最后在左侧就向左找。
+     * 搜索方向在进入 BLIND 后锁定，避免边缘传感器抖动造成反复换向。
      */
-    if (sample->last_valid_error >= 0)
+    if (g_blind_search_dir >= 0)
     {
         left = LINE_BLIND_TURN_PWM;
         right = LINE_BLIND_BASE_PWM;
