@@ -139,7 +139,7 @@ extern "C" {
 #define LINE_BASE_PWM_MID              230
 #define LINE_BASE_PWM_SLOW             200
 /* 转弯恢复、丢线搜索、直角弯专用 PWM。方向和实际速度需要实车低速验证。 */
-#define LINE_RECOVER_PWM               220
+#define LINE_RECOVER_PWM               190
 #define LINE_BLIND_BASE_PWM            90
 #define LINE_BLIND_TURN_PWM            220
 #define LINE_CORNER_INNER_PWM          60
@@ -170,7 +170,7 @@ extern "C" {
 /* KD 抑制蛇形摆动；过大可能放大传感器抖动。 */
 #define LINE_PID_KD                    0.004f
 /* PID 输出和积分项限幅，避免丢线/大误差时积分或差速过大。 */
-#define LINE_PID_OUT_LIMIT             220.0f
+#define LINE_PID_OUT_LIMIT             120.0f
 #define LINE_PID_INTEGRAL_LIMIT        800.0f
 
 /* ===================== 视觉/云台预留 ===================== */
