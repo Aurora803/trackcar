@@ -379,6 +379,7 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     uint8_t reached_encoder = 0U;
     uint8_t reached_time = 0U;
     uint8_t found_center = 0U;
+    uint8_t found_line = 0U;
     uint8_t center_search_timeout = 0U;
 
     g_state_time_ms += dt_ms;
@@ -399,7 +400,11 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     {
         found_center = tracker_center_found(sample);
     }
-    if (reached_encoder && !found_center)
+    if (reached_encoder)
+    {
+        found_line = tracker_is_valid(sample);
+    }
+    if (reached_encoder && !found_line)
     {
         g_corner_center_search_ms += dt_ms;
         center_search_timeout = (g_corner_center_search_ms >= LINE_CORNER_CENTER_SEARCH_MS) ? 1U : 0U;
@@ -415,18 +420,18 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     if (g_corner_dir < 0)
     {
-        left = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
-        right = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
+        left = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
+        right = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
     }
     else
     {
-        left = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
-        right = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
+        left = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
+        right = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
     }
 
     apply_pwm(left, right, 0);
 
-    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_time || found_center))
+    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_time || found_center || (reached_encoder && found_line)))
     {
         if (g_corner_count < 65535U)
         {

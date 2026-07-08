@@ -126,7 +126,7 @@ extern "C" {
 #define LINE_CORNER_TIME_MS            520U
 #define LINE_CORNER_ENCODER_TARGET     650
 #define LINE_CORNER_CENTER_ENABLE_ENCODER 500  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
-#define LINE_CORNER_CENTER_SEARCH_MS   320U
+#define LINE_CORNER_CENTER_SEARCH_MS   220U
 #define LINE_CORNER_DEBOUNCE_COUNT     6U  /* 连续检测到同向直角特征后才切入转角状态。 */
 #define LINE_CORNER_REARM_MS           700U
 #define LINE_CORNER_REARM_CENTER_MS    200U
