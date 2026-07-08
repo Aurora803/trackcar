@@ -351,7 +351,7 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
         }
     }
 
-    if (tracker_center_found(sample))
+    if (tracker_is_valid(sample))
     {
         g_reacquire_time_ms += dt_ms;
         if (g_reacquire_time_ms >= LINE_BLIND_REACQUIRE_MS)

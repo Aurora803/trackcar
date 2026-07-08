@@ -110,7 +110,7 @@ extern "C" {
 /* BLIND/LOST 中连续重新看到线达到该时间后进入 RECOVER。 */
 #define LINE_BLIND_REACQUIRE_MS        40U
 /* BLIND 搜索超时后进入 LOST 停车等待。 */
-#define LINE_BLIND_TIMEOUT_MS          1600U
+#define LINE_BLIND_TIMEOUT_MS          2000U
 /* RECOVER 低速平滑恢复时间。 */
 #define LINE_RECOVER_MS                320U
 /* CORNER 最短保持时间，避免刚进入直角就被中心压线误判退出。 */
@@ -168,7 +168,7 @@ extern "C" {
 /* 当前保持 KI=0，相当于 PD 控制，避免积分在丢线或直角弯前后累积。 */
 #define LINE_PID_KI                    0.00f
 /* KD 抑制蛇形摆动；过大可能放大传感器抖动。 */
-#define LINE_PID_KD                    0.002f
+#define LINE_PID_KD                    0.000f
 /* PID 输出和积分项限幅，避免丢线/大误差时积分或差速过大。 */
 #define LINE_PID_OUT_LIMIT             160.0f
 #define LINE_PID_INTEGRAL_LIMIT        800.0f
