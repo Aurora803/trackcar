@@ -116,7 +116,7 @@ extern "C" {
 /* CORNER 最短保持时间，避免刚进入直角就被中心压线误判退出。 */
 #define LINE_CORNER_MIN_MS             260U
 /* CORNER 超时后退回 BLIND 找线。 */
-#define LINE_CORNER_TIMEOUT_MS         700U
+#define LINE_CORNER_TIMEOUT_MS         950U
 /* 当前你的串口 LE/RE/SUM 一直为 0，说明编码器反馈未通。
  * 先用定时直角弯跑通矩形；后续编码器修好后改成 1。
  */
@@ -124,14 +124,15 @@ extern "C" {
 #define LINE_CORNER_USE_ENCODER        1
 /* LINE_CORNER_USE_ENCODER=0 时的直角弯定时退出时间，单位 ms，需要实车低速微调。 */
 #define LINE_CORNER_TIME_MS            520U
-#define LINE_CORNER_ENCODER_TARGET     550
-#define LINE_CORNER_CENTER_ENABLE_ENCODER 420  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
+#define LINE_CORNER_ENCODER_TARGET     650
+#define LINE_CORNER_CENTER_ENABLE_ENCODER 500  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
+#define LINE_CORNER_CENTER_SEARCH_MS   320U
 #define LINE_CORNER_DEBOUNCE_COUNT     6U  /* 连续检测到同向直角特征后才切入转角状态。 */
 #define LINE_CORNER_REARM_MS           700U
 #define LINE_CORNER_REARM_CENTER_MS    200U
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
-#define LINE_RECOVER_ERROR_THRESHOLD   450
+#define LINE_RECOVER_ERROR_THRESHOLD   650
 
 /* 循迹基础 PWM：误差越小使用越快的档位，误差越大自动降速。 */
 #define LINE_BASE_PWM_FAST             260
@@ -143,6 +144,8 @@ extern "C" {
 #define LINE_BLIND_TURN_PWM            220
 #define LINE_CORNER_INNER_PWM          60
 #define LINE_CORNER_OUTER_PWM          320
+#define LINE_CORNER_ALIGN_INNER_PWM    120
+#define LINE_CORNER_ALIGN_OUTER_PWM    220
 
 /* 权重单位越大，转向响应越强。左负右正。 */
 #define TRACKER_WEIGHT_0               (-1200)

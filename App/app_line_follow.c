@@ -30,6 +30,7 @@ static int8_t g_corner_candidate_dir = 0;
 static uint8_t g_corner_candidate_count = 0U;
 static uint32_t g_corner_rearm_ms = 0U;
 static uint32_t g_corner_rearm_center_ms = 0U;
+static uint32_t g_corner_center_search_ms = 0U;
 static uint8_t g_corner_armed = 1U;
 
 static int32_t abs_i32(int32_t value)
@@ -192,6 +193,7 @@ static void enter_corner(int8_t dir)
 
     g_corner_dir = dir;
     g_corner_encoder_sum = 0;
+    g_corner_center_search_ms = 0U;
     PID_Reset(&g_line_pid);
     enter_state(LINE_STATE_CORNER);
 }
@@ -377,6 +379,7 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     uint8_t reached_encoder = 0U;
     uint8_t reached_time = 0U;
     uint8_t found_center = 0U;
+    uint8_t center_search_timeout = 0U;
 
     g_state_time_ms += dt_ms;
     ch = Chassis_GetState();
@@ -384,23 +387,22 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     if (g_corner_dir < 0)
     {
         g_corner_encoder_sum += abs_i32((int32_t)ch.right_encoder_delta);
-        left = LINE_CORNER_INNER_PWM;
-        right = LINE_CORNER_OUTER_PWM;
     }
     else
     {
         g_corner_encoder_sum += abs_i32((int32_t)ch.left_encoder_delta);
-        left = LINE_CORNER_OUTER_PWM;
-        right = LINE_CORNER_INNER_PWM;
     }
-
-    apply_pwm(left, right, 0);
 
 #if LINE_CORNER_USE_ENCODER
     reached_encoder = (g_corner_encoder_sum >= LINE_CORNER_ENCODER_TARGET) ? 1U : 0U;
     if (g_corner_encoder_sum >= LINE_CORNER_CENTER_ENABLE_ENCODER)
     {
         found_center = tracker_center_found(sample);
+    }
+    if (reached_encoder && !found_center)
+    {
+        g_corner_center_search_ms += dt_ms;
+        center_search_timeout = (g_corner_center_search_ms >= LINE_CORNER_CENTER_SEARCH_MS) ? 1U : 0U;
     }
 #else
     /* 编码器还没调通时，先用固定时间退出直角弯，避免 SUM=0 时卡死或直接 LOST。 */
@@ -411,7 +413,20 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 #endif
 
-    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_encoder || reached_time || found_center))
+    if (g_corner_dir < 0)
+    {
+        left = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
+        right = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
+    }
+    else
+    {
+        left = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
+        right = (reached_encoder && !found_center) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
+    }
+
+    apply_pwm(left, right, 0);
+
+    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_time || found_center))
     {
         if (g_corner_count < 65535U)
         {
@@ -421,6 +436,19 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
         g_corner_rearm_center_ms = 0U;
         g_corner_armed = 0U;
         enter_state(LINE_STATE_RECOVER);
+        return;
+    }
+
+    if (g_state_time_ms >= LINE_CORNER_MIN_MS && center_search_timeout)
+    {
+        if (g_corner_count < 65535U)
+        {
+            g_corner_count++;
+        }
+        g_corner_rearm_ms = LINE_CORNER_REARM_MS;
+        g_corner_rearm_center_ms = 0U;
+        g_corner_armed = 0U;
+        enter_state(LINE_STATE_BLIND);
         return;
     }
 
@@ -520,6 +548,7 @@ void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
     g_corner_count = 0U;
     g_corner_rearm_ms = 0U;
     g_corner_rearm_center_ms = 0U;
+    g_corner_center_search_ms = 0U;
     g_corner_armed = 1U;
     reset_corner_debounce();
 }
