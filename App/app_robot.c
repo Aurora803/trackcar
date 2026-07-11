@@ -23,8 +23,15 @@
 #endif
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
-static robot_mode_t g_mode = ROBOT_MODE_LINE_FOLLOW;
+#if APP_ENABLE_BLUETOOTH_CONTROL && APP_ENABLE_VISION_TARGET
+#error "Bluetooth control and vision protocol cannot share the USART2 RX buffer at the same time."
+#endif
+
+#define BLUETOOTH_CMD_BUFFER_SIZE 16U
+
+static robot_mode_t g_mode = ROBOT_MODE_STOP;
 static uint32_t g_last_control_ms = 0U;
 static uint32_t g_last_telemetry_ms = 0U;
 static uint32_t g_last_led_ms = 0U;
@@ -32,6 +39,8 @@ static int32_t g_telemetry_left_encoder_accum = 0;
 static int32_t g_telemetry_right_encoder_accum = 0;
 static uint32_t g_control_max_dt_ms = 0U;
 static uint32_t g_control_overrun_count = 0U;
+static char g_bluetooth_cmd_buffer[BLUETOOTH_CMD_BUFFER_SIZE];
+static uint8_t g_bluetooth_cmd_len = 0U;
 
 #if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
 typedef enum
@@ -173,6 +182,73 @@ static void motor_test_update(uint32_t now)
 }
 #endif
 
+#if APP_ENABLE_BLUETOOTH_CONTROL
+static void bluetooth_execute_command(const char *command)
+{
+    if (strcmp(command, "START") == 0 || strcmp(command, "GO") == 0 || strcmp(command, "1") == 0)
+    {
+        AppRobot_SetMode(ROBOT_MODE_LINE_FOLLOW);
+        BSP_DebugUART_SendString("ACK START\r\n");
+    }
+    else if (strcmp(command, "STOP") == 0 || strcmp(command, "0") == 0)
+    {
+        AppRobot_SetMode(ROBOT_MODE_STOP);
+        BSP_DebugUART_SendString("ACK STOP\r\n");
+    }
+    else
+    {
+        BSP_DebugUART_SendString("ERR CMD USE START/STOP OR 1/0\r\n");
+    }
+}
+
+static void bluetooth_command_poll(void)
+{
+    char ch;
+
+    while (BSP_DebugUART_ReadCharNonBlocking(&ch))
+    {
+        if ((ch == '1' || ch == '0') && g_bluetooth_cmd_len == 0U)
+        {
+            g_bluetooth_cmd_buffer[0] = ch;
+            g_bluetooth_cmd_buffer[1] = '\0';
+            bluetooth_execute_command(g_bluetooth_cmd_buffer);
+            continue;
+        }
+
+        if (ch == '\r' || ch == '\n')
+        {
+            if (g_bluetooth_cmd_len > 0U)
+            {
+                g_bluetooth_cmd_buffer[g_bluetooth_cmd_len] = '\0';
+                bluetooth_execute_command(g_bluetooth_cmd_buffer);
+                g_bluetooth_cmd_len = 0U;
+            }
+            continue;
+        }
+
+        if (ch >= 'a' && ch <= 'z')
+        {
+            ch = (char)(ch - ('a' - 'A'));
+        }
+
+        if (ch == ' ' && g_bluetooth_cmd_len == 0U)
+        {
+            continue;
+        }
+
+        if (g_bluetooth_cmd_len < (BLUETOOTH_CMD_BUFFER_SIZE - 1U))
+        {
+            g_bluetooth_cmd_buffer[g_bluetooth_cmd_len++] = ch;
+        }
+        else
+        {
+            g_bluetooth_cmd_len = 0U;
+            BSP_DebugUART_SendString("ERR CMD TOO LONG\r\n");
+        }
+    }
+}
+#endif
+
 /**
  * @brief 输出当前调试遥测。
  *
@@ -297,7 +373,14 @@ void AppRobot_Init(void)
     g_mode = ROBOT_MODE_MOTOR_TEST;
     motor_test_enter_phase(MOTOR_TEST_PHASE_WAIT, g_last_control_ms);
 #else
+#if APP_ENABLE_BLUETOOTH_CONTROL
+    g_mode = ROBOT_MODE_STOP;
+    g_bluetooth_cmd_len = 0U;
+    Chassis_StopCoast();
+    BSP_DebugUART_SendString("READY STOP CMD=START/STOP OR 1/0\r\n");
+#else
     g_mode = ROBOT_MODE_LINE_FOLLOW;
+#endif
 #endif
 }
 
@@ -310,6 +393,11 @@ void AppRobot_Init(void)
 void AppRobot_Task(void)
 {
     uint32_t now = BSP_GetTickMs();
+
+#if APP_ENABLE_BLUETOOTH_CONTROL
+    /* 每次主循环都处理命令，STOP 不需要等待下一个 10ms 控制周期。 */
+    bluetooth_command_poll();
+#endif
 
     if ((now - g_last_control_ms) >= APP_CONTROL_PERIOD_MS)
     {
@@ -391,15 +479,23 @@ void AppRobot_Task(void)
 /**
  * @brief 切换机器人模式。
  *
- * 当前只在 STOP 模式切入时立即空转停止；其他模式的状态恢复由各自任务处理。
+ * STOP 立即空转停车；从其他模式进入循迹时先复位状态机，再等待 START 稳定期。
  */
 void AppRobot_SetMode(robot_mode_t mode)
 {
-    g_mode = mode;
-    if (g_mode == ROBOT_MODE_STOP)
+    if (mode == ROBOT_MODE_STOP)
     {
+        g_mode = ROBOT_MODE_STOP;
         Chassis_StopCoast();
+        return;
     }
+
+    if (mode == ROBOT_MODE_LINE_FOLLOW && g_mode != ROBOT_MODE_LINE_FOLLOW)
+    {
+        AppLineFollow_Reset();
+    }
+
+    g_mode = mode;
 }
 
 /**

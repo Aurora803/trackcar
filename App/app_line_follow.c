@@ -641,25 +641,18 @@ static void handle_lost(const tracker8_sample_t *sample, uint32_t dt_ms)
 }
 
 /**
- * @brief 初始化循迹状态机、传感器驱动和 PID。
+ * @brief 停车并把循迹运行状态复位到 START。
  */
-void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
+void AppLineFollow_Reset(void)
 {
-    g_tracker = tracker_driver;
-    if (g_tracker != 0 && g_tracker->init != 0)
-    {
-        g_tracker->init();
-    }
+    Chassis_StopCoast();
+    PID_Reset(&g_line_pid);
 
-    PID_Init(&g_line_pid,
-             LINE_PID_KP,
-             LINE_PID_KI,
-             LINE_PID_KD,
-             -LINE_PID_OUT_LIMIT,
-             LINE_PID_OUT_LIMIT,
-             -LINE_PID_INTEGRAL_LIMIT,
-             LINE_PID_INTEGRAL_LIMIT);
-
+    g_debug.tracker.raw_bits = 0U;
+    g_debug.tracker.active_count = 0U;
+    g_debug.tracker.position_error = 0;
+    g_debug.tracker.last_valid_error = 0;
+    g_debug.tracker.status = TRACKER_STATUS_INVALID;
     g_debug.left_pwm = 0;
     g_debug.right_pwm = 0;
     g_debug.correction = 0;
@@ -687,6 +680,28 @@ void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
     g_sensor_healthy_ms = 0U;
     g_sensor_fault = LINE_SENSOR_FAULT_NONE;
     reset_corner_debounce();
+}
+
+/**
+ * @brief 初始化循迹状态机、传感器驱动和 PID。
+ */
+void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
+{
+    g_tracker = tracker_driver;
+    if (g_tracker != 0 && g_tracker->init != 0)
+    {
+        g_tracker->init();
+    }
+
+    PID_Init(&g_line_pid,
+             LINE_PID_KP,
+             LINE_PID_KI,
+             LINE_PID_KD,
+             -LINE_PID_OUT_LIMIT,
+             LINE_PID_OUT_LIMIT,
+             -LINE_PID_INTEGRAL_LIMIT,
+             LINE_PID_INTEGRAL_LIMIT);
+    AppLineFollow_Reset();
 }
 
 /**

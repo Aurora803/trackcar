@@ -37,6 +37,11 @@ void BSP_DebugUART_SendString(const char *str);
 uint32_t BSP_DebugUART_GetTxDroppedCount(void);
 
 /**
+ * @brief 非阻塞读取一个 USART2/蓝牙接收字符。
+ */
+int BSP_DebugUART_ReadCharNonBlocking(char *out_ch);
+
+/**
  * @brief 发送 name=value 调试行。
  */
 void BSP_DebugUART_SendInt(const char *name, int32_t value);

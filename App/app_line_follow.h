@@ -67,6 +67,11 @@ typedef struct
 void AppLineFollow_Init(const tracker8_driver_t *tracker_driver);
 
 /**
+ * @brief 停车并把循迹状态机复位到 START，供蓝牙重新启动前调用。
+ */
+void AppLineFollow_Reset(void);
+
+/**
  * @brief 运行一次循迹状态机。
  * @param dt_ms 距离上次调用的时间间隔，通常为 APP_CONTROL_PERIOD_MS。
  */

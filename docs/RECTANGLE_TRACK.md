@@ -11,6 +11,7 @@
 - 直角弯：传感器识别进入 `CORNER`，优先按编码器累计退出；
 - 速度控制：仍是 PWM 开环，不做左右轮速度闭环；
 - 编码器状态：右编码器 `RE` 有效，左编码器 `LE` 暂不可靠。
+- 启停方式：上电默认 STOP，蓝牙 `START/1` 启动，`STOP/0` 停车。
 
 当前关键配置以 `App/app_config.h` 为准：
 
@@ -46,7 +47,7 @@ START -> FOLLOW -> CORNER -> RECOVER -> FOLLOW
 
 | 状态 | 编号 | 含义 |
 |---|---:|---|
-| `LINE_STATE_START` | 0 | 上电稳定等待 |
+| `LINE_STATE_START` | 0 | 每次蓝牙启动后的 200ms 稳定等待 |
 | `LINE_STATE_FOLLOW` | 1 | 正常循迹 |
 | `LINE_STATE_BLIND` | 2 | 暂时丢线，按最后误差方向低速找线 |
 | `LINE_STATE_CORNER` | 3 | 直角弯转向 |

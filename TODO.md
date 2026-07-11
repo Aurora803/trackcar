@@ -36,6 +36,8 @@ Firmware follow-up items:
 1. USART2 `printf` now uses an interrupt-driven TX queue and keeps the Bluetooth link at
    9600 baud with a 500ms telemetry period. Before adding more telemetry, monitor
    `BSP_DebugUART_GetTxDroppedCount()` and keep the queue from overflowing.
-2. `BSP/bsp_servo.c` still contains a guarded placeholder for gimbal PWM. Do not enable
+2. Bluetooth START/STOP commands cannot detect a wireless disconnect through UART alone.
+   Add the module STATE pin or a heartbeat timeout if disconnect-to-stop is required.
+3. `BSP/bsp_servo.c` still contains a guarded placeholder for gimbal PWM. Do not enable
    `APP_ENABLE_GIMBAL_SERVO` until stage D rewrites the servo PWM plan to TIM3 + PB4/PB5
    or another non-conflicting output path.

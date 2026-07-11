@@ -39,6 +39,8 @@ extern "C" {
 /* ===================== 串口参数 ===================== */
 /* 当前调试口实际为 USART2(PA2/PA3)，保留 DEBUG 命名避免上层关心具体串口号。 */
 #define DEBUG_UART_BAUDRATE            9600U
+/* 1：使用同一 USART2 蓝牙链路接收 START/STOP；启用后默认上电停车。 */
+#define APP_ENABLE_BLUETOOTH_CONTROL   1
 /* 视觉协议预留波特率；当前未分配独立视觉串口。 */
 #define VISION_UART_BAUDRATE           115200U
 

@@ -191,7 +191,7 @@ void BSP_VisionUART_SendString(const char *str)
 /**
  * @brief 从 USART2 环形缓冲非阻塞读取一个字节。
  */
-int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
+int BSP_DebugUART_ReadCharNonBlocking(char *out_ch)
 {
     if (out_ch == 0) return 0;
 
@@ -203,6 +203,14 @@ int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
     *out_ch = g_uart2_rx_buffer[g_uart2_rx_tail];
     g_uart2_rx_tail = (uint16_t)((g_uart2_rx_tail + 1U) % UART2_RX_BUFFER_SIZE);
     return 1;
+}
+
+/**
+ * @brief 视觉预留接口，当前复用 USART2/蓝牙接收缓冲。
+ */
+int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
+{
+    return BSP_DebugUART_ReadCharNonBlocking(out_ch);
 }
 
 /**

@@ -9,6 +9,7 @@
 - 直角弯：默认固定左转，优先使用右编码器累计值退出直角。
 - 电机：TB6612FNG，TIM1 输出左右电机 PWM。
 - 编码器：右编码器 `RE` 当前有效；左编码器 `LE` 仍不稳定，暂不用于速度闭环。
+- 蓝牙控制：USART2 保持 9600 8N1；上电默认停车，收到 `START`/`1` 后启动，`STOP`/`0` 立即停车。
 - 视觉/云台：代码预留，默认关闭。
 
 关键配置以 [`App/app_config.h`](App/app_config.h) 为准：
@@ -26,6 +27,7 @@
 #define LINE_BASE_PWM_SLOW             220
 #define APP_ENABLE_VISION_TARGET       0
 #define APP_ENABLE_GIMBAL_SERVO        0
+#define APP_ENABLE_BLUETOOTH_CONTROL   1
 ```
 
 ## 工程结构
@@ -88,6 +90,22 @@ BSP/
 3. 若使用 ARM GCC，确认链接脚本为 STM32F103C8T6 的 64 KB Flash / 20 KB RAM 配置。
 
 更详细说明见 [`Project/README_Keil_EIDE.md`](Project/README_Keil_EIDE.md)。
+
+## 蓝牙启动与停止
+
+蓝牙模块连接 USART2 PA2/PA3，波特率保持 9600。上电后小车处于
+`ROBOT_MODE_STOP`，串口发送：
+
+| 命令 | 行结束要求 | 动作 | 返回 |
+|---|---|---|---|
+| `1` | 不需要 | 复位循迹状态机，等待 200ms 后开始循迹 | `ACK START` |
+| `0` | 不需要 | 立即把底盘PWM停止 | `ACK STOP` |
+| `START` 或 `GO` | 需要 `\r` 或 `\n` | 与 `1` 相同 | `ACK START` |
+| `STOP` | 需要 `\r` 或 `\n` | 与 `0` 相同 | `ACK STOP` |
+
+手机蓝牙串口按钮建议直接配置为发送单字符 `1` 和 `0`。普通UART无法知道蓝牙
+无线链路是否已经断开，所以当前“断开蓝牙自动停车”尚未实现；需要模块 STATE
+引脚或周期心跳协议才能可靠判断。
 
 ## 串口调试
 
