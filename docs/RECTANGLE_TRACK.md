@@ -20,15 +20,18 @@
 
 #define LINE_CORNER_USE_ENCODER        1
 #define LINE_CORNER_ENCODER_TARGET     550
-#define LINE_CORNER_CENTER_ENABLE_ENCODER 420
-#define LINE_CORNER_DEBOUNCE_COUNT     4U
+#define LINE_CORNER_CENTER_ENABLE_ENCODER 500
+#define LINE_CORNER_DEBOUNCE_COUNT     6U
+#define LINE_CORNER_EXIT_CONFIRM_MS    30U
 
 #define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              230
-#define LINE_BASE_PWM_SLOW             200
+#define LINE_BASE_PWM_MID              240
+#define LINE_BASE_PWM_SLOW             220
 #define LINE_CORNER_INNER_PWM          60
-#define LINE_CORNER_OUTER_PWM          320
-#define LINE_BLIND_TIMEOUT_MS          1200U
+#define LINE_CORNER_OUTER_PWM          280
+#define LINE_CORNER_ALIGN_INNER_PWM    120
+#define LINE_CORNER_ALIGN_OUTER_PWM    180
+#define LINE_BLIND_TIMEOUT_MS          2000U
 ```
 
 注意：如果烧录后串口里 `S=3` 时 `SUM` 仍经常跑到 1000 以上才退出，说明固件可能没有烧到最新版本，或者编码器退出条件没有真正生效。
@@ -87,13 +90,16 @@ RAW=0x38 ERR=133
 
 ## 4. 直角识别
 
-当前代码中，一侧 3 路以上触发且另一侧很少触发时进入直角弯。但方向不再由左右侧形态决定，而是统一使用：
+当前代码中，一侧 3 路以上触发且另一侧很少触发时成为直角候选，连续 6 帧同方向候选才进入直角弯。方向不再由左右侧形态决定，而是统一使用：
 
 ```c
 #define RECT_DEFAULT_CORNER_DIR (-1)
 ```
 
 也就是所有直角默认左转。这样做是为了避免同一个矩形跑道上由于传感器形态变化导致 `DIR=-1 / DIR=1` 来回跳。
+
+达到中心门槛或编码器目标后，电机会先切到 120/180 的柔和对线 PWM；中心线或
+有效线连续确认 30ms 后才进入 `RECOVER`，单帧噪声不会直接结束直角。
 
 如果之后换成全右转赛道，只改：
 
@@ -106,7 +112,7 @@ RAW=0x38 ERR=133
 当前 USART2 输出示例：
 
 ```text
-M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610
+M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610 DT=10 OV=0 F=0 TD=0
 ```
 
 | 字段 | 含义 |
@@ -120,6 +126,10 @@ M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610
 | `C` | 已完成直角弯次数 |
 | `DIR` | 当前直角方向，-1 左转，1 右转 |
 | `SUM` | 当前直角弯累计编码器计数 |
+| `DT` | 最近 500ms 内最大的控制调度间隔 |
+| `OV` | 最近 500ms 内控制间隔达到 20ms 的次数 |
+| `F` | 传感器健康故障码：0正常，1全未触发超时，2全触发超时，3驱动无效 |
+| `TD` | USART2 TX 队列累计丢字节数 |
 
 当前判读重点：
 
@@ -128,6 +138,8 @@ M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610
 - 编码器退出是否生效：`S=3` 退出时 `SUM` 应接近 `LINE_CORNER_ENCODER_TARGET`，而不是长期跑到 1000 以上；
 - 出弯稳定：`S=4` 后应回到 `S=1`，不要长期 `RAW=0x00`；
 - 失败停车：`S=5 RAW=0x00 LPWM=0 RPWM=0`。
+- 调度稳定：`DT` 应接近 10，`OV=0`；串口队列不溢出时 `TD=0`。
+- 传感器健康：正常跑道应保持 `F=0`；`F!=0` 时底盘进入 `LOST` 停车。
 
 ## 6. 当前已知问题
 

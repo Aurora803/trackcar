@@ -13,7 +13,7 @@
    - `stm32f10x_rcc.c`
    - `stm32f10x_tim.c`
    - `stm32f10x_usart.c`
-   - `stm32f10x_misc.c`
+   - `misc.c`
 4. Include 路径添加：
    - `User`
    - `App`
@@ -33,3 +33,5 @@
 3. 确保工具链为 ARM GCC 或 ARMCC；
 4. Include/Define 同 Keil；
 5. 如果使用 ARM GCC，确认链接脚本与启动文件适配 STM32F103C8T6：Flash 64K，RAM 20K。
+6. 本仓库 GCC 工程使用 `Start/startup_stm32f10x_md_gcc.c`、`Start/syscalls_gcc.c`
+   和根目录 `STM32F103C8_FLASH.ld`；从零导入时不要漏掉 `Start` 与 `Library` 源码。

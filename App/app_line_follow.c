@@ -31,12 +31,33 @@ static uint8_t g_corner_candidate_count = 0U;
 static uint32_t g_corner_rearm_ms = 0U;
 static uint32_t g_corner_rearm_center_ms = 0U;
 static uint32_t g_corner_center_search_ms = 0U;
+static uint32_t g_corner_exit_confirm_ms = 0U;
 static uint8_t g_corner_armed = 1U;
 static int8_t g_blind_search_dir = 0;
+static uint32_t g_sensor_all_inactive_ms = 0U;
+static uint32_t g_sensor_all_active_ms = 0U;
+static uint32_t g_sensor_healthy_ms = 0U;
+static line_sensor_fault_t g_sensor_fault = LINE_SENSOR_FAULT_NONE;
 
 static int32_t abs_i32(int32_t value)
 {
     return (value < 0) ? -value : value;
+}
+
+/* 连续采样证据最多按一个名义控制周期累加，避免一次调度延迟等价于多帧确认。 */
+static uint32_t add_sample_confirm_ms(uint32_t current, uint32_t dt_ms, uint32_t limit)
+{
+    uint32_t step = (dt_ms > APP_CONTROL_PERIOD_MS) ? APP_CONTROL_PERIOD_MS : dt_ms;
+
+    if (current >= limit)
+    {
+        return limit;
+    }
+    if (step >= (limit - current))
+    {
+        return limit;
+    }
+    return current + step;
 }
 
 static uint8_t count_bits4(uint8_t value)
@@ -76,6 +97,65 @@ static uint8_t tracker_center_found(const tracker8_sample_t *sample)
     }
 
     return 0U;
+}
+
+/**
+ * @brief 识别持续全高/全低和底层无效采样，并在恢复稳定后自动清除故障。
+ */
+static void update_sensor_health(tracker8_sample_t *sample, uint32_t dt_ms)
+{
+    if (sample->status == TRACKER_STATUS_INVALID)
+    {
+        g_sensor_fault = LINE_SENSOR_FAULT_DRIVER_INVALID;
+        g_sensor_healthy_ms = 0U;
+    }
+    else if (sample->raw_bits == 0x00U)
+    {
+        g_sensor_all_inactive_ms = add_sample_confirm_ms(g_sensor_all_inactive_ms,
+                                                         dt_ms,
+                                                         TRACKER_ALL_INACTIVE_FAULT_MS);
+        g_sensor_all_active_ms = 0U;
+        g_sensor_healthy_ms = 0U;
+        if (g_sensor_fault == LINE_SENSOR_FAULT_NONE &&
+            g_sensor_all_inactive_ms >= TRACKER_ALL_INACTIVE_FAULT_MS)
+        {
+            g_sensor_fault = LINE_SENSOR_FAULT_ALL_INACTIVE;
+        }
+    }
+    else if (sample->raw_bits == 0xFFU)
+    {
+        g_sensor_all_active_ms = add_sample_confirm_ms(g_sensor_all_active_ms,
+                                                       dt_ms,
+                                                       TRACKER_ALL_ACTIVE_FAULT_MS);
+        g_sensor_all_inactive_ms = 0U;
+        g_sensor_healthy_ms = 0U;
+        if (g_sensor_fault == LINE_SENSOR_FAULT_NONE &&
+            g_sensor_all_active_ms >= TRACKER_ALL_ACTIVE_FAULT_MS)
+        {
+            g_sensor_fault = LINE_SENSOR_FAULT_ALL_ACTIVE;
+        }
+    }
+    else
+    {
+        g_sensor_all_inactive_ms = 0U;
+        g_sensor_all_active_ms = 0U;
+        if (g_sensor_fault != LINE_SENSOR_FAULT_NONE)
+        {
+            g_sensor_healthy_ms = add_sample_confirm_ms(g_sensor_healthy_ms,
+                                                        dt_ms,
+                                                        TRACKER_FAULT_CLEAR_MS);
+            if (g_sensor_healthy_ms >= TRACKER_FAULT_CLEAR_MS)
+            {
+                g_sensor_fault = LINE_SENSOR_FAULT_NONE;
+                g_sensor_healthy_ms = 0U;
+            }
+        }
+    }
+
+    if (g_sensor_fault != LINE_SENSOR_FAULT_NONE)
+    {
+        sample->status = TRACKER_STATUS_INVALID;
+    }
 }
 
 /* 直角弯检测去抖：要求连续多帧同方向特征，降低反光/杂线误触发概率。 */
@@ -200,6 +280,7 @@ static void enter_corner(int8_t dir)
     g_corner_dir = dir;
     g_corner_encoder_sum = 0;
     g_corner_center_search_ms = 0U;
+    g_corner_exit_confirm_ms = 0U;
     PID_Reset(&g_line_pid);
     enter_state(LINE_STATE_CORNER);
 }
@@ -228,7 +309,7 @@ static int16_t calc_dynamic_base_pwm(int16_t position_error)
  * @brief 下发左右轮 PWM 并更新调试字段。
  *
  * LINE_PWM_LIMIT 是循迹应用层限幅；Chassis_SetPWM 内的 CHASSIS_PWM_LIMIT
- * 是底盘安全限幅。当前两者相同，本轮保持双层限幅以避免改变既有输出路径。
+ * 是更宽的底盘安全限幅，保留双层限制以隔离应用调参与底盘保护。
  */
 static void apply_pwm(int16_t left, int16_t right, int16_t correction)
 {
@@ -353,7 +434,9 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     if (tracker_is_valid(sample))
     {
-        g_reacquire_time_ms += dt_ms;
+        g_reacquire_time_ms = add_sample_confirm_ms(g_reacquire_time_ms,
+                                                    dt_ms,
+                                                    LINE_BLIND_REACQUIRE_MS);
         if (g_reacquire_time_ms >= LINE_BLIND_REACQUIRE_MS)
         {
             enter_state(LINE_STATE_RECOVER);
@@ -391,7 +474,8 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
  * @brief CORNER 状态：矩形赛道直角弯处理。
  *
  * 进入条件来自 FOLLOW 中的直角特征去抖。退出条件由
- * LINE_CORNER_USE_ENCODER 决定：当前配置为时间退出，编码器恢复后可改为计数退出。
+ * LINE_CORNER_USE_ENCODER 决定：当前固定左转使用右编码器累计值退出；
+ * 传感器出口需要连续 LINE_CORNER_EXIT_CONFIRM_MS 确认。
  */
 static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
 {
@@ -402,6 +486,9 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     uint8_t reached_time = 0U;
     uint8_t found_center = 0U;
     uint8_t found_line = 0U;
+    uint8_t sensor_exit_candidate = 0U;
+    uint8_t sensor_exit_confirmed = 0U;
+    uint8_t align_phase = 0U;
     uint8_t center_search_timeout = 0U;
 
     g_state_time_ms += dt_ms;
@@ -440,20 +527,34 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
     }
 #endif
 
-    if (g_corner_dir < 0)
+    sensor_exit_candidate = (found_center || (reached_encoder && found_line)) ? 1U : 0U;
+    if (sensor_exit_candidate)
     {
-        left = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
-        right = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
+        g_corner_exit_confirm_ms = add_sample_confirm_ms(g_corner_exit_confirm_ms,
+                                                         dt_ms,
+                                                         LINE_CORNER_EXIT_CONFIRM_MS);
     }
     else
     {
-        left = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
-        right = (reached_encoder && !found_line) ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
+        g_corner_exit_confirm_ms = 0U;
+    }
+    sensor_exit_confirmed = (g_corner_exit_confirm_ms >= LINE_CORNER_EXIT_CONFIRM_MS) ? 1U : 0U;
+    align_phase = (reached_encoder || found_center) ? 1U : 0U;
+
+    if (g_corner_dir < 0)
+    {
+        left = align_phase ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
+        right = align_phase ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
+    }
+    else
+    {
+        left = align_phase ? LINE_CORNER_ALIGN_OUTER_PWM : LINE_CORNER_OUTER_PWM;
+        right = align_phase ? LINE_CORNER_ALIGN_INNER_PWM : LINE_CORNER_INNER_PWM;
     }
 
     apply_pwm(left, right, 0);
 
-    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_time || found_center || (reached_encoder && found_line)))
+    if (g_state_time_ms >= LINE_CORNER_MIN_MS && (reached_time || sensor_exit_confirmed))
     {
         if (g_corner_count < 65535U)
         {
@@ -525,7 +626,9 @@ static void handle_lost(const tracker8_sample_t *sample, uint32_t dt_ms)
      */
     if (tracker_is_valid(sample))
     {
-        g_reacquire_time_ms += dt_ms;
+        g_reacquire_time_ms = add_sample_confirm_ms(g_reacquire_time_ms,
+                                                    dt_ms,
+                                                    LINE_BLIND_REACQUIRE_MS);
         if (g_reacquire_time_ms >= LINE_BLIND_REACQUIRE_MS)
         {
             enter_state(LINE_STATE_RECOVER);
@@ -564,6 +667,7 @@ void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
     g_debug.corner_dir = 0;
     g_debug.corner_count = 0U;
     g_debug.corner_encoder_sum = 0U;
+    g_debug.sensor_fault = LINE_SENSOR_FAULT_NONE;
     g_debug.state_time_ms = 0U;
 
     g_state = LINE_STATE_START;
@@ -576,7 +680,12 @@ void AppLineFollow_Init(const tracker8_driver_t *tracker_driver)
     g_corner_rearm_ms = 0U;
     g_corner_rearm_center_ms = 0U;
     g_corner_center_search_ms = 0U;
+    g_corner_exit_confirm_ms = 0U;
     g_corner_armed = 1U;
+    g_sensor_all_inactive_ms = 0U;
+    g_sensor_all_active_ms = 0U;
+    g_sensor_healthy_ms = 0U;
+    g_sensor_fault = LINE_SENSOR_FAULT_NONE;
     reset_corner_debounce();
 }
 
@@ -597,7 +706,24 @@ void AppLineFollow_Update(uint32_t dt_ms)
     }
 
     sample = g_tracker->read();
+    update_sensor_health(&sample, dt_ms);
     g_debug.tracker = sample;
+
+    if (g_sensor_fault != LINE_SENSOR_FAULT_NONE)
+    {
+        if (g_state != LINE_STATE_LOST)
+        {
+            enter_state(LINE_STATE_LOST);
+        }
+        Chassis_StopCoast();
+        g_debug.left_pwm = 0;
+        g_debug.right_pwm = 0;
+        g_debug.correction = 0;
+        g_debug.state = g_state;
+        g_debug.sensor_fault = g_sensor_fault;
+        g_debug.state_time_ms = g_state_time_ms;
+        return;
+    }
 
     if (g_corner_armed == 0U)
     {
@@ -660,6 +786,7 @@ void AppLineFollow_Update(uint32_t dt_ms)
     g_debug.corner_dir = g_corner_dir;
     g_debug.corner_count = g_corner_count;
     g_debug.corner_encoder_sum = (uint16_t)clamp_i16(g_corner_encoder_sum, 0, 32767);
+    g_debug.sensor_fault = g_sensor_fault;
     g_debug.state_time_ms = g_state_time_ms;
 }
 

@@ -29,7 +29,7 @@
 /*
  * 工程自定义说明：
  * 本文件属于 User/中断层。SysTick 只递增 1ms tick，USART2 中断只转发到 BSP
- * 接收缓冲处理；不要在中断中加入 PID、printf 或电机控制等耗时逻辑。
+ * 收发缓冲处理；不要在中断中加入 PID、printf 或电机控制等耗时逻辑。
  */
 
 /** @addtogroup STM32F10x_StdPeriph_Template

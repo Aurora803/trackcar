@@ -32,6 +32,14 @@ typedef enum
     LINE_STATE_LOST
 } line_follow_state_t;
 
+typedef enum
+{
+    LINE_SENSOR_FAULT_NONE = 0,
+    LINE_SENSOR_FAULT_ALL_INACTIVE,
+    LINE_SENSOR_FAULT_ALL_ACTIVE,
+    LINE_SENSOR_FAULT_DRIVER_INVALID
+} line_sensor_fault_t;
+
 typedef struct
 {
     /* 最近一次 8 路循迹采样。 */
@@ -47,6 +55,8 @@ typedef struct
     uint16_t corner_count;      /* completed 90-degree corners */
     /* 当前直角弯累计编码器计数；时间转弯模式下仍保留用于调试。 */
     uint16_t corner_encoder_sum;
+    /* 0 正常，1 长时间全未触发，2 长时间全触发，3 驱动报告无效。 */
+    line_sensor_fault_t sensor_fault;
     /* 当前状态已持续时间，单位 ms。 */
     uint32_t state_time_ms;
 } line_follow_debug_t;

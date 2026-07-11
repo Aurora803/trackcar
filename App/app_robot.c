@@ -30,6 +30,8 @@ static uint32_t g_last_telemetry_ms = 0U;
 static uint32_t g_last_led_ms = 0U;
 static int32_t g_telemetry_left_encoder_accum = 0;
 static int32_t g_telemetry_right_encoder_accum = 0;
+static uint32_t g_control_max_dt_ms = 0U;
+static uint32_t g_control_overrun_count = 0U;
 
 #if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
 typedef enum
@@ -174,8 +176,8 @@ static void motor_test_update(uint32_t now)
 /**
  * @brief 输出当前调试遥测。
  *
- * 当前 printf 通过 USART2 阻塞发送。50ms 输出一行适合调试，但正式高速闭环
- * 时应降低频率或改为非阻塞发送，避免串口占用主循环时间。
+ * 当前 printf 通过 USART2 TXE 中断队列非阻塞发送。遥测周期为 500ms，
+ * 保留完整字段的同时避免 9600 波特率发送过程占用主控制循环。
  */
 static void telemetry_output(void)
 {
@@ -196,7 +198,7 @@ static void telemetry_output(void)
             diff_percent = 0;
         }
 
-        printf("MT CYCLE=%lu PH=%s T=%lu LPWM=%d RPWM=%d LE=%ld RE=%ld LA=%ld RA=%ld LSUM=%ld RSUM=%ld DIFF=%ld%%\r\n",
+        printf("MT CYCLE=%lu PH=%s T=%lu LPWM=%d RPWM=%d LE=%ld RE=%ld LA=%ld RA=%ld LSUM=%ld RSUM=%ld DIFF=%ld%% DT=%lu OV=%lu TD=%lu\r\n",
                (unsigned long)g_motor_test_cycle,
                motor_test_phase_name(g_motor_test_phase),
                (unsigned long)(BSP_GetTickMs() - g_motor_test_phase_start_ms),
@@ -208,19 +210,24 @@ static void telemetry_output(void)
                (long)g_telemetry_right_encoder_abs_accum,
                (long)g_motor_test_left_abs_sum,
                (long)g_motor_test_right_abs_sum,
-               (long)diff_percent);
+               (long)diff_percent,
+               (unsigned long)g_control_max_dt_ms,
+               (unsigned long)g_control_overrun_count,
+               (unsigned long)BSP_DebugUART_GetTxDroppedCount());
 
         g_telemetry_left_encoder_accum = 0;
         g_telemetry_right_encoder_accum = 0;
         g_telemetry_left_encoder_abs_accum = 0;
         g_telemetry_right_encoder_abs_accum = 0;
+        g_control_max_dt_ms = 0U;
+        g_control_overrun_count = 0U;
         return;
     }
 #endif
 
     dbg = AppLineFollow_GetDebug();
 
-    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u\r\n",
+    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u DT=%lu OV=%lu F=%u TD=%lu\r\n",
            (int)g_mode,
            (int)dbg.state,
            dbg.tracker.raw_bits,
@@ -231,10 +238,16 @@ static void telemetry_output(void)
            (long)g_telemetry_right_encoder_accum,
            (unsigned int)dbg.corner_count,
            (int)dbg.corner_dir,
-           (unsigned int)dbg.corner_encoder_sum);
+           (unsigned int)dbg.corner_encoder_sum,
+           (unsigned long)g_control_max_dt_ms,
+           (unsigned long)g_control_overrun_count,
+           (unsigned int)dbg.sensor_fault,
+           (unsigned long)BSP_DebugUART_GetTxDroppedCount());
 
     g_telemetry_left_encoder_accum = 0;
     g_telemetry_right_encoder_accum = 0;
+    g_control_max_dt_ms = 0U;
+    g_control_overrun_count = 0U;
 #if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
     g_telemetry_left_encoder_abs_accum = 0;
     g_telemetry_right_encoder_abs_accum = 0;
@@ -277,6 +290,8 @@ void AppRobot_Init(void)
     g_last_control_ms = BSP_GetTickMs();
     g_last_telemetry_ms = g_last_control_ms;
     g_last_led_ms = g_last_control_ms;
+    g_control_max_dt_ms = 0U;
+    g_control_overrun_count = 0U;
 
 #if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
     g_mode = ROBOT_MODE_MOTOR_TEST;
@@ -301,8 +316,17 @@ void AppRobot_Task(void)
         uint32_t dt = now - g_last_control_ms;
         g_last_control_ms = now;
 
+        if (dt > g_control_max_dt_ms)
+        {
+            g_control_max_dt_ms = dt;
+        }
+        if (dt >= APP_CONTROL_OVERRUN_WARN_MS)
+        {
+            g_control_overrun_count++;
+        }
+
         /* 编码器采样与控制周期同步。当前仍是 PWM 开环循迹，
-         * 但后续接速度闭环时不会再遇到 50ms 遥测周期数据滞后的问题。
+         * 遥测只读取控制周期累积值，不改变编码器采样节拍。
          */
         Chassis_UpdateEncoder();
         {

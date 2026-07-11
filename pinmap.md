@@ -16,7 +16,7 @@ Design assumptions for this draft:
 - MCU logic rail: 3V3 derived from 5V through a 3.3 V LDO.
 - TB6612 logic VCC: 3V3, so MCU GPIO can drive it directly.
 - Track sensor and encoder interfaces are connector-based because exact modules are not confirmed.
-- Track sensor outputs are treated as active-low digital outputs because `LINE_LEVEL` is 0 in code.
+- Track sensor outputs are treated as active-low digital outputs because `TRACKER_BLACK_ACTIVE_LOW` is 1 in code.
 
 ## MCU Pin Usage
 

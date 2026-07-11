@@ -12,21 +12,24 @@
 
 #define LINE_CORNER_USE_ENCODER        1
 #define LINE_CORNER_ENCODER_TARGET     550
-#define LINE_CORNER_CENTER_ENABLE_ENCODER 420
-#define LINE_CORNER_DEBOUNCE_COUNT     4U
+#define LINE_CORNER_CENTER_ENABLE_ENCODER 500
+#define LINE_CORNER_DEBOUNCE_COUNT     6U
+#define LINE_CORNER_EXIT_CONFIRM_MS    30U
 
 #define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              230
-#define LINE_BASE_PWM_SLOW             200
+#define LINE_BASE_PWM_MID              240
+#define LINE_BASE_PWM_SLOW             220
 #define LINE_RECOVER_PWM               220
 #define LINE_BLIND_BASE_PWM            90
 #define LINE_BLIND_TURN_PWM            220
 #define LINE_CORNER_INNER_PWM          60
-#define LINE_CORNER_OUTER_PWM          320
+#define LINE_CORNER_OUTER_PWM          280
+#define LINE_CORNER_ALIGN_INNER_PWM    120
+#define LINE_CORNER_ALIGN_OUTER_PWM    180
 
 #define LINE_PID_KP                    0.16f
 #define LINE_PID_KI                    0.00f
-#define LINE_PID_KD                    0.004f
+#define LINE_PID_KD                    0.000f
 ```
 
 当前结论：
@@ -60,6 +63,17 @@ S=1 RAW=0x38 ERR=133
 ```
 
 这是可接受状态。
+
+同时检查新增诊断字段：
+
+```text
+DT=10 OV=0 F=0 TD=0
+```
+
+- `DT`：最近 500ms 内最大控制间隔，正常应接近 10ms；
+- `OV`：控制间隔达到 20ms 的次数，稳定运行应为 0；
+- `F`：传感器健康故障码，正常为 0；
+- `TD`：USART2 TX 队列累计丢字符数，正常应保持 0。
 
 ### 进入左直角
 
@@ -133,7 +147,7 @@ S=3 ... SUM 接近 550 后进入 S=4
 #define LINE_RECOVER_MS                300U
 ```
 
-当前源码仍是 `160U`。如果串口中频繁出现：
+当前源码为 `320U`。如果串口中频繁出现：
 
 ```text
 S=4 -> S=1 -> S=3

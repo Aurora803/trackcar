@@ -124,6 +124,7 @@ virtualFolder:
         - path: docs/PLAN.md
         - path: docs/PORTING.md
         - path: docs/TUNING.md
+        - path: docs/VALIDATION.md
       folders: []
     - name: project
       files:

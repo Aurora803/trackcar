@@ -18,9 +18,12 @@
 #define RECT_ENABLE_CROSS_CORNER       1
 #define LINE_CORNER_USE_ENCODER        1
 #define LINE_CORNER_ENCODER_TARGET     550
+#define LINE_CORNER_CENTER_ENABLE_ENCODER 500
+#define LINE_CORNER_DEBOUNCE_COUNT     6U
+#define LINE_CORNER_EXIT_CONFIRM_MS    30U
 #define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              230
-#define LINE_BASE_PWM_SLOW             200
+#define LINE_BASE_PWM_MID              240
+#define LINE_BASE_PWM_SLOW             220
 #define APP_ENABLE_VISION_TARGET       0
 #define APP_ENABLE_GIMBAL_SERVO        0
 ```
@@ -63,7 +66,7 @@ BSP/
 | 电机 PWM | TIM1_CH1 PA8 右电机，TIM1_CH2 PA9 左电机 |
 | 编码器 | TIM2 PA0/PA1 左编码器，TIM4 PB6/PB7 右编码器 |
 | 循迹传感器 | 8 路数字输入，X1 到 X8 |
-| 调试串口 | USART2 PA2/PA3，9600 8N1 |
+| 调试串口 | USART2 PA2/PA3，9600 8N1，TXE 中断队列发送 |
 | 系统节拍 | SysTick 1 ms |
 
 完整引脚表见 [`pinmap.md`](pinmap.md)。
@@ -91,7 +94,7 @@ BSP/
 当前 USART2 遥测示例：
 
 ```text
-M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610
+M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610 DT=10 OV=0 F=0 TD=0
 ```
 
 常用字段：
@@ -107,6 +110,10 @@ M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610
 | `C` | 已完成直角弯次数 |
 | `DIR` | 当前直角方向，`-1` 左转，`1` 右转 |
 | `SUM` | 当前直角弯累计编码器计数 |
+| `DT` | 最近遥测窗口内最大的控制调度间隔，正常应接近 10 ms |
+| `OV` | 最近遥测窗口内 `DT >= 20 ms` 的次数 |
+| `F` | 传感器健康故障：0正常，1长期全未触发，2长期全触发，3驱动无效 |
+| `TD` | USART2 TX 队列累计丢弃字符数，正常应保持 0 |
 
 常见正常直线数据：
 
@@ -139,11 +146,13 @@ LINE_BASE_PWM_SLOW
 3. 当前是开环 PWM，左右电机实际速度可能不一致。
 4. 若 `S=3` 时 `SUM` 经常超过 1000 才退出，需要优先确认是否烧录了最新固件，以及编码器退出条件是否生效。
 5. 视觉和云台功能仍是预留状态，默认不参与主循环控制。
+6. 当前已增加直角出口连续确认和传感器极端状态诊断，但仍需用同一固件完成连续 3 圈实车验收。
 
 ## 文档
 
 - [`docs/PLAN.md`](docs/PLAN.md)：当前项目计划与赛前收敛策略。
 - [`docs/RECTANGLE_TRACK.md`](docs/RECTANGLE_TRACK.md)：矩形循迹状态机、串口字段和失败链路。
 - [`docs/TUNING.md`](docs/TUNING.md)：调参记录与建议。
+- [`docs/VALIDATION.md`](docs/VALIDATION.md)：三圈实车、遥测和电气冻结验收清单。
 - [`pinmap.md`](pinmap.md)：当前硬件引脚映射。
 - [`Project/README_Keil_EIDE.md`](Project/README_Keil_EIDE.md)：Keil / EIDE 导入说明。

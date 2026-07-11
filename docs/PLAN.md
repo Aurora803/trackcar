@@ -53,6 +53,9 @@ BSP/
 - 右编码器 `RE` 已能看到明显有效计数；
 - 左编码器 `LE` 基本仍是 `-1/0/1` 抖动，暂不可用于闭环；
 - 当前源码配置 `LINE_CORNER_USE_ENCODER = 1`，左转直角会优先用右编码器累计退出；
+- USART2 保持蓝牙 9600 波特率，`printf` 已改为 TXE 中断队列，不再等待逐字节发送；
+- 直角传感器出口增加 30ms 连续确认，BLIND/LOST 重获线按实际采样帧累计；
+- 已增加 `DT/OV/F/TD` 调度、传感器和串口队列诊断字段；
 - 最新串口日志中，部分直角 `SUM` 仍超过目标很多后才退出。如果烧录后仍这样，优先确认是否烧录了最新固件，其次检查编码器退出逻辑是否实际生效。
 
 当前主要风险：
@@ -76,10 +79,14 @@ LINE_CORNER_ENCODER_TARGET
 LINE_CORNER_CENTER_ENABLE_ENCODER
 LINE_RECOVER_MS
 LINE_CORNER_DEBOUNCE_COUNT
+LINE_CORNER_EXIT_CONFIRM_MS
 LINE_BASE_PWM_FAST / MID / SLOW
 ```
 
 不要同时大范围改 PID、传感器权重、电机方向和硬件映射。
+
+验收时必须使用同一个 commit 和配置连续跑完 3 圈，并保存完整遥测；目标为
+`OV=0`、`F=0`、`TD=0`，且每个直角退出时 `SUM` 不出现异常跃迁。
 
 ### B. 接线可靠性
 
@@ -100,13 +107,14 @@ LINE_BASE_PWM_FAST / MID / SLOW
 建议协议：
 
 ```text
-T,dx,dy\n
+$T,dx,dy,valid\n
 ```
 
 含义：
 
 - `dx`：目标中心相对画面中心的水平偏差；
 - `dy`：目标中心相对画面中心的垂直偏差；
+- `valid`：1 表示目标有效，0 表示目标丢失；
 - STM32 只做简单 P 控制，先不做完整 PID。
 
 默认不要启用底盘多模式复杂切换。先保证循迹不被云台任务阻塞。
