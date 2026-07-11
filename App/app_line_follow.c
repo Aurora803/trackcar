@@ -28,6 +28,7 @@ static int32_t g_corner_encoder_sum = 0;
 static uint16_t g_corner_count = 0U;
 static int8_t g_corner_candidate_dir = 0;
 static uint8_t g_corner_candidate_count = 0U;
+static uint32_t g_recover_lost_time_ms = 0U;
 static uint32_t g_corner_rearm_ms = 0U;
 static uint32_t g_corner_rearm_center_ms = 0U;
 static uint32_t g_corner_center_search_ms = 0U;
@@ -37,6 +38,7 @@ static int8_t g_blind_search_dir = 0;
 static uint32_t g_sensor_all_inactive_ms = 0U;
 static uint32_t g_sensor_all_active_ms = 0U;
 static uint32_t g_sensor_healthy_ms = 0U;
+static uint32_t g_recover_center_ms = 0U;
 static line_sensor_fault_t g_sensor_fault = LINE_SENSOR_FAULT_NONE;
 
 static int32_t abs_i32(int32_t value)
@@ -595,17 +597,52 @@ static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     if (!tracker_is_valid(sample))
     {
-        /* RECOVER 的含义是“已经重新看见线后的平滑恢复”。
-         * RAW=0 时继续直行会把车带离赛道，因此立即退回 BLIND 找线。
+        g_recover_lost_time_ms =
+            add_sample_confirm_ms(g_recover_lost_time_ms,
+                                  dt_ms,
+                                  LINE_RECOVER_LOST_CONFIRM_MS);
+
+        if (g_recover_lost_time_ms >= LINE_RECOVER_LOST_CONFIRM_MS)
+        {
+            enter_state(LINE_STATE_BLIND);
+            return;
+        }
+
+        /*
+         * 允许 1～2 个控制周期的瞬时丢线。
+         * 此时不要继续使用上一次误差猛打方向。
          */
-        enter_state(LINE_STATE_BLIND);
+        PID_Reset(&g_line_pid);
+
+        apply_pwm(LINE_RECOVER_LOST_PWM,
+                  LINE_RECOVER_LOST_PWM,
+                  0);
         return;
     }
 
+    g_recover_lost_time_ms = 0U;
     g_lost_time_ms = 0U;
+
     apply_line_pid(sample, dt_ms, LINE_RECOVER_PWM);
 
-    if (g_state_time_ms >= LINE_RECOVER_MS)
+/*
+ * 必须在 RECOVER 中运行至少 LINE_RECOVER_MS，
+ * 并且黑线连续稳定在中央一段时间，才能回到 FOLLOW。
+ */
+    if (tracker_center_found(sample))
+    {
+        g_recover_center_ms =
+            add_sample_confirm_ms(g_recover_center_ms,
+                                dt_ms,
+                                LINE_RECOVER_CENTER_CONFIRM_MS);
+    }
+    else
+    {
+        g_recover_center_ms = 0U;
+    }
+
+    if (g_state_time_ms >= LINE_RECOVER_MS &&
+        g_recover_center_ms >= LINE_RECOVER_CENTER_CONFIRM_MS)
     {
         enter_state(LINE_STATE_FOLLOW);
     }
@@ -740,32 +777,59 @@ void AppLineFollow_Update(uint32_t dt_ms)
         return;
     }
 
+    /*
+ * 直角完成后，必须连续处于正常 FOLLOW 状态一段时间，
+ * 才允许识别下一个直角。
+ *
+ * 在 CORNER、RECOVER、BLIND、LOST 中不计算重新使能时间；
+ * 一旦离开 FOLLOW，重新开始计时。
+ */
     if (g_corner_armed == 0U)
     {
-        if (g_corner_rearm_ms > 0U)
+        if (g_state != LINE_STATE_FOLLOW)
         {
-            if (dt_ms >= g_corner_rearm_ms)
+            /*
+            * 尚未稳定进入下一段直线，保持直角检测关闭。
+            */
+            g_corner_rearm_ms = LINE_CORNER_REARM_MS;
+            g_corner_rearm_center_ms = 0U;
+        }
+        else
+        {
+            /*
+            * 只有连续处于 FOLLOW 时，才递减重新使能延时。
+            */
+            if (g_corner_rearm_ms > 0U)
             {
-                g_corner_rearm_ms = 0U;
+                if (dt_ms >= g_corner_rearm_ms)
+                {
+                    g_corner_rearm_ms = 0U;
+                }
+                else
+                {
+                    g_corner_rearm_ms -= dt_ms;
+                }
+
+                g_corner_rearm_center_ms = 0U;
+            }
+            else if (tracker_center_found(&sample))
+            {
+                /*
+                * FOLLOW 延时结束后，还需中心线连续稳定。
+                */
+                g_corner_rearm_center_ms += dt_ms;
+
+                if (g_corner_rearm_center_ms >=
+                    LINE_CORNER_REARM_CENTER_MS)
+                {
+                    g_corner_armed = 1U;
+                    g_corner_rearm_center_ms = 0U;
+                }
             }
             else
             {
-                g_corner_rearm_ms -= dt_ms;
-            }
-        }
-
-        if (g_corner_rearm_ms == 0U && tracker_center_found(&sample))
-        {
-            g_corner_rearm_center_ms += dt_ms;
-            if (g_corner_rearm_center_ms >= LINE_CORNER_REARM_CENTER_MS)
-            {
-                g_corner_armed = 1U;
                 g_corner_rearm_center_ms = 0U;
             }
-        }
-        else if (g_corner_rearm_ms == 0U)
-        {
-            g_corner_rearm_center_ms = 0U;
         }
     }
 

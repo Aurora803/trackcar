@@ -27,7 +27,7 @@ extern "C" {
 /* 控制调度间隔达到该值时计为一次明显超时，并通过遥测 OV 字段报告。 */
 #define APP_CONTROL_OVERRUN_WARN_MS    20U
 /* 串口遥测周期，单位 ms。printf 使用中断 TX 队列；周期过短仍可能填满队列并丢字符。 */
-#define APP_TELEMETRY_PERIOD_MS        500U
+#define APP_TELEMETRY_PERIOD_MS        200U
 
 /* 1: boot into wheel speed test demo. Lift the car before flashing/running. */
 #define APP_ENABLE_MOTOR_SPEED_TEST_DEMO 0
@@ -141,6 +141,11 @@ extern "C" {
 #define TRACKER_ALL_ACTIVE_FAULT_MS    300U
 #define TRACKER_ALL_INACTIVE_FAULT_MS  2500U
 #define TRACKER_FAULT_CLEAR_MS         200U
+
+#define LINE_RECOVER_LOST_CONFIRM_MS 30U
+#define LINE_RECOVER_LOST_PWM        170
+
+#define LINE_RECOVER_CENTER_CONFIRM_MS  250U
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   650
