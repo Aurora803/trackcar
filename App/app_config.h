@@ -146,11 +146,11 @@ extern "C" {
 #define LINE_RECOVER_ERROR_THRESHOLD   650
 
 /* 循迹基础 PWM：误差越小使用越快的档位，误差越大自动降速。 */
-#define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              240
-#define LINE_BASE_PWM_SLOW             220
+#define LINE_BASE_PWM_FAST             240
+#define LINE_BASE_PWM_MID              220
+#define LINE_BASE_PWM_SLOW             200
 /* 转弯恢复、丢线搜索、直角弯专用 PWM。方向和实际速度需要实车低速验证。 */
-#define LINE_RECOVER_PWM               220
+#define LINE_RECOVER_PWM               200
 #define LINE_BLIND_BASE_PWM            90
 #define LINE_BLIND_TURN_PWM            220
 #define LINE_CORNER_INNER_PWM          60

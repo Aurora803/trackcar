@@ -25,9 +25,10 @@
 #define LINE_CORNER_DEBOUNCE_COUNT     6U
 #define LINE_CORNER_EXIT_CONFIRM_MS    30U
 
-#define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              240
-#define LINE_BASE_PWM_SLOW             220
+#define LINE_BASE_PWM_FAST             240
+#define LINE_BASE_PWM_MID              220
+#define LINE_BASE_PWM_SLOW             200
+#define LINE_RECOVER_PWM               200
 #define LINE_CORNER_INNER_PWM          60
 #define LINE_CORNER_OUTER_PWM          280
 #define LINE_CORNER_ALIGN_INNER_PWM    120

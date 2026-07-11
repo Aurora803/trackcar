@@ -22,9 +22,10 @@
 #define LINE_CORNER_CENTER_ENABLE_ENCODER 500
 #define LINE_CORNER_DEBOUNCE_COUNT     6U
 #define LINE_CORNER_EXIT_CONFIRM_MS    30U
-#define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              240
-#define LINE_BASE_PWM_SLOW             220
+#define LINE_BASE_PWM_FAST             240
+#define LINE_BASE_PWM_MID              220
+#define LINE_BASE_PWM_SLOW             200
+#define LINE_RECOVER_PWM               200
 #define APP_ENABLE_VISION_TARGET       0
 #define APP_ENABLE_GIMBAL_SERVO        0
 #define APP_ENABLE_BLUETOOTH_CONTROL   1
