@@ -12,6 +12,7 @@
 #include "pid.h"
 #include "chassis.h"
 #include "common_types.h"
+#include <stdio.h>
 
 /* 传感器驱动由 AppRobot_Init 注入，便于后续替换不同循迹模块。 */
 static const tracker8_driver_t *g_tracker = 0;
@@ -40,6 +41,29 @@ static uint32_t g_sensor_all_active_ms = 0U;
 static uint32_t g_sensor_healthy_ms = 0U;
 static uint32_t g_recover_center_ms = 0U;
 static line_sensor_fault_t g_sensor_fault = LINE_SENSOR_FAULT_NONE;
+
+typedef enum
+{
+    LINE_TRANSITION_NONE = 0,
+    LINE_TRANSITION_START_TO_FOLLOW = 1,
+    LINE_TRANSITION_FOLLOW_TO_CORNER = 2,
+    LINE_TRANSITION_FOLLOW_LOST_TO_BLIND = 3,
+    LINE_TRANSITION_CORNER_ENCODER_EXIT = 4,
+    LINE_TRANSITION_CORNER_CENTER_EXIT = 5,
+    LINE_TRANSITION_CORNER_TIMEOUT_EXIT = 6,
+    LINE_TRANSITION_CORNER_TO_BLIND = 7,
+    LINE_TRANSITION_BLIND_REACQUIRE_TO_RECOVER = 8,
+    LINE_TRANSITION_BLIND_TIMEOUT_TO_LOST = 9,
+    LINE_TRANSITION_RECOVER_STABLE_TO_FOLLOW = 10,
+    LINE_TRANSITION_RECOVER_LOST_TO_BLIND = 11,
+    LINE_TRANSITION_LOST_REACQUIRE_TO_RECOVER = 12,
+    LINE_TRANSITION_SENSOR_FAULT_TO_LOST = 13
+} line_transition_reason_t;
+
+static uint8_t g_transition_reason = (uint8_t)LINE_TRANSITION_NONE;
+#if LINE_ENABLE_TRANSITION_TRACE
+static tracker8_sample_t g_transition_sample;
+#endif
 
 static int32_t abs_i32(int32_t value)
 {
@@ -251,6 +275,18 @@ static uint8_t corner_dir_confirmed(int8_t dir)
  */
 static void enter_state(line_follow_state_t next_state)
 {
+#if LINE_ENABLE_TRANSITION_TRACE
+    line_follow_state_t old_state = g_state;
+    uint32_t old_state_time_ms = g_state_time_ms;
+    uint8_t old_raw_bits = g_transition_sample.raw_bits;
+    int16_t old_position_error = g_transition_sample.position_error;
+    uint16_t old_corner_encoder_sum = (uint16_t)g_corner_encoder_sum;
+    uint32_t old_recover_center_ms = g_recover_center_ms;
+    uint32_t old_recover_lost_time_ms = g_recover_lost_time_ms;
+    uint8_t old_corner_armed = g_corner_armed;
+    uint32_t old_corner_rearm_ms = g_corner_rearm_ms;
+#endif
+
     g_state = next_state;
     g_state_time_ms = 0U;
     g_lost_time_ms = 0U;
@@ -266,6 +302,24 @@ static void enter_state(line_follow_state_t next_state)
     {
         PID_Reset(&g_line_pid);
     }
+
+#if LINE_ENABLE_TRANSITION_TRACE
+    if (old_state != next_state)
+    {
+        printf("EV FROM=%u TO=%u TR=%u OST=%lu RAW=0x%02X ERR=%d SUM=%u RCM=%lu RLM=%lu ARM=%u RM=%lu\r\n",
+               (unsigned int)old_state,
+               (unsigned int)next_state,
+               (unsigned int)g_transition_reason,
+               (unsigned long)old_state_time_ms,
+               (unsigned int)old_raw_bits,
+               (int)old_position_error,
+               (unsigned int)old_corner_encoder_sum,
+               (unsigned long)old_recover_center_ms,
+               (unsigned long)old_recover_lost_time_ms,
+               (unsigned int)old_corner_armed,
+               (unsigned long)old_corner_rearm_ms);
+    }
+#endif
 }
 
 /**
@@ -284,6 +338,7 @@ static void enter_corner(int8_t dir)
     g_corner_center_search_ms = 0U;
     g_corner_exit_confirm_ms = 0U;
     PID_Reset(&g_line_pid);
+    g_transition_reason = (uint8_t)LINE_TRANSITION_FOLLOW_TO_CORNER;
     enter_state(LINE_STATE_CORNER);
 }
 
@@ -352,6 +407,29 @@ static void apply_line_pid(const tracker8_sample_t *sample, uint32_t dt_ms, int1
 }
 
 /**
+ * @brief RECOVER 专用 PID 输出，仅限制修正量，不改变 PID 计算和转向极性。
+ */
+static void apply_recover_pid(const tracker8_sample_t *sample, uint32_t dt_ms)
+{
+    float correction_f;
+    int16_t correction;
+    int16_t left;
+    int16_t right;
+
+    correction_f = PID_Update(&g_line_pid,
+                              (float)sample->position_error,
+                              0.0f,
+                              (float)dt_ms / 1000.0f);
+    correction = clamp_i16((int16_t)correction_f,
+                           -LINE_RECOVER_CORRECTION_LIMIT,
+                           LINE_RECOVER_CORRECTION_LIMIT);
+
+    left = (int16_t)(LINE_RECOVER_PWM + correction);
+    right = (int16_t)(LINE_RECOVER_PWM - correction);
+    apply_pwm(left, right, correction);
+}
+
+/**
  * @brief START 状态：上电后保持电机停止，等待传感器和电源稳定。
  */
 static void handle_start(const tracker8_sample_t *sample, uint32_t dt_ms)
@@ -362,6 +440,7 @@ static void handle_start(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     if (g_state_time_ms >= LINE_START_STABLE_MS)
     {
+        g_transition_reason = (uint8_t)LINE_TRANSITION_START_TO_FOLLOW;
         enter_state(LINE_STATE_FOLLOW);
     }
 }
@@ -393,6 +472,7 @@ static void handle_follow(const tracker8_sample_t *sample, uint32_t dt_ms)
         g_lost_time_ms += dt_ms;
         if (g_lost_time_ms >= LINE_BLIND_ENTER_MS)
         {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_FOLLOW_LOST_TO_BLIND;
             enter_state(LINE_STATE_BLIND);
             return;
         }
@@ -441,6 +521,7 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
                                                     LINE_BLIND_REACQUIRE_MS);
         if (g_reacquire_time_ms >= LINE_BLIND_REACQUIRE_MS)
         {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_BLIND_REACQUIRE_TO_RECOVER;
             enter_state(LINE_STATE_RECOVER);
             return;
         }
@@ -452,6 +533,7 @@ static void handle_blind(const tracker8_sample_t *sample, uint32_t dt_ms)
 
     if (g_state_time_ms >= LINE_BLIND_TIMEOUT_MS)
     {
+        g_transition_reason = (uint8_t)LINE_TRANSITION_BLIND_TIMEOUT_TO_LOST;
         enter_state(LINE_STATE_LOST);
         return;
     }
@@ -565,6 +647,18 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
         g_corner_rearm_ms = LINE_CORNER_REARM_MS;
         g_corner_rearm_center_ms = 0U;
         g_corner_armed = 0U;
+        if (found_center)
+        {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_CORNER_CENTER_EXIT;
+        }
+        else if (reached_encoder)
+        {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_CORNER_ENCODER_EXIT;
+        }
+        else
+        {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_CORNER_TIMEOUT_EXIT;
+        }
         enter_state(LINE_STATE_RECOVER);
         return;
     }
@@ -578,12 +672,14 @@ static void handle_corner(const tracker8_sample_t *sample, uint32_t dt_ms)
         g_corner_rearm_ms = LINE_CORNER_REARM_MS;
         g_corner_rearm_center_ms = 0U;
         g_corner_armed = 0U;
+        g_transition_reason = (uint8_t)LINE_TRANSITION_CORNER_TO_BLIND;
         enter_state(LINE_STATE_BLIND);
         return;
     }
 
     if (g_state_time_ms >= LINE_CORNER_TIMEOUT_MS)
     {
+        g_transition_reason = (uint8_t)LINE_TRANSITION_CORNER_TIMEOUT_EXIT;
         enter_state(LINE_STATE_BLIND);
     }
 }
@@ -604,6 +700,7 @@ static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
 
         if (g_recover_lost_time_ms >= LINE_RECOVER_LOST_CONFIRM_MS)
         {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_RECOVER_LOST_TO_BLIND;
             enter_state(LINE_STATE_BLIND);
             return;
         }
@@ -623,13 +720,15 @@ static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
     g_recover_lost_time_ms = 0U;
     g_lost_time_ms = 0U;
 
-    apply_line_pid(sample, dt_ms, LINE_RECOVER_PWM);
+    apply_recover_pid(sample, dt_ms);
 
 /*
  * 必须在 RECOVER 中运行至少 LINE_RECOVER_MS，
  * 并且黑线连续稳定在中央一段时间，才能回到 FOLLOW。
  */
-    if (tracker_center_found(sample))
+    if (sample->status == TRACKER_STATUS_OK &&
+        (sample->raw_bits & 0x18U) != 0U &&
+        abs_i32((int32_t)sample->position_error) <= LINE_RECOVER_CENTER_ERROR_MAX)
     {
         g_recover_center_ms =
             add_sample_confirm_ms(g_recover_center_ms,
@@ -644,6 +743,7 @@ static void handle_recover(const tracker8_sample_t *sample, uint32_t dt_ms)
     if (g_state_time_ms >= LINE_RECOVER_MS &&
         g_recover_center_ms >= LINE_RECOVER_CENTER_CONFIRM_MS)
     {
+        g_transition_reason = (uint8_t)LINE_TRANSITION_RECOVER_STABLE_TO_FOLLOW;
         enter_state(LINE_STATE_FOLLOW);
     }
 }
@@ -668,6 +768,7 @@ static void handle_lost(const tracker8_sample_t *sample, uint32_t dt_ms)
                                                     LINE_BLIND_REACQUIRE_MS);
         if (g_reacquire_time_ms >= LINE_BLIND_REACQUIRE_MS)
         {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_LOST_REACQUIRE_TO_RECOVER;
             enter_state(LINE_STATE_RECOVER);
         }
     }
@@ -716,6 +817,7 @@ void AppLineFollow_Reset(void)
     g_sensor_all_active_ms = 0U;
     g_sensor_healthy_ms = 0U;
     g_sensor_fault = LINE_SENSOR_FAULT_NONE;
+    g_transition_reason = (uint8_t)LINE_TRANSITION_NONE;
     reset_corner_debounce();
 }
 
@@ -759,12 +861,16 @@ void AppLineFollow_Update(uint32_t dt_ms)
 
     sample = g_tracker->read();
     update_sensor_health(&sample, dt_ms);
+#if LINE_ENABLE_TRANSITION_TRACE
+    g_transition_sample = sample;
+#endif
     g_debug.tracker = sample;
 
     if (g_sensor_fault != LINE_SENSOR_FAULT_NONE)
     {
         if (g_state != LINE_STATE_LOST)
         {
+            g_transition_reason = (uint8_t)LINE_TRANSITION_SENSOR_FAULT_TO_LOST;
             enter_state(LINE_STATE_LOST);
         }
         Chassis_StopCoast();
@@ -774,6 +880,12 @@ void AppLineFollow_Update(uint32_t dt_ms)
         g_debug.state = g_state;
         g_debug.sensor_fault = g_sensor_fault;
         g_debug.state_time_ms = g_state_time_ms;
+        g_debug.corner_armed = g_corner_armed;
+        g_debug.corner_rearm_ms = g_corner_rearm_ms;
+        g_debug.corner_rearm_center_ms = g_corner_rearm_center_ms;
+        g_debug.recover_center_ms = g_recover_center_ms;
+        g_debug.recover_lost_time_ms = g_recover_lost_time_ms;
+        g_debug.transition_reason = g_transition_reason;
         return;
     }
 
@@ -867,6 +979,12 @@ void AppLineFollow_Update(uint32_t dt_ms)
     g_debug.corner_encoder_sum = (uint16_t)clamp_i16(g_corner_encoder_sum, 0, 32767);
     g_debug.sensor_fault = g_sensor_fault;
     g_debug.state_time_ms = g_state_time_ms;
+    g_debug.corner_armed = g_corner_armed;
+    g_debug.corner_rearm_ms = g_corner_rearm_ms;
+    g_debug.corner_rearm_center_ms = g_corner_rearm_center_ms;
+    g_debug.recover_center_ms = g_recover_center_ms;
+    g_debug.recover_lost_time_ms = g_recover_lost_time_ms;
+    g_debug.transition_reason = g_transition_reason;
 }
 
 /**

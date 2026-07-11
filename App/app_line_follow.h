@@ -59,6 +59,24 @@ typedef struct
     line_sensor_fault_t sensor_fault;
     /* 当前状态已持续时间，单位 ms。 */
     uint32_t state_time_ms;
+
+    /* 直角检测是否已使能。 */
+    uint8_t corner_armed;
+
+    /* 直角重新使能的剩余冷却时间，单位 ms。 */
+    uint32_t corner_rearm_ms;
+
+    /* 中心稳定确认已经累计的时间，单位 ms。 */
+    uint32_t corner_rearm_center_ms;
+
+    /* RECOVER 中心稳定确认累计时间，单位 ms。 */
+    uint32_t recover_center_ms;
+
+    /* RECOVER 连续丢线确认累计时间，单位 ms。 */
+    uint32_t recover_lost_time_ms;
+
+    /* 最近一次状态转换原因，仅用于遥测诊断。 */
+    uint8_t transition_reason;
 } line_follow_debug_t;
 
 /**

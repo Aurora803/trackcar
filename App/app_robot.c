@@ -303,13 +303,13 @@ static void telemetry_output(void)
 
     dbg = AppLineFollow_GetDebug();
 
-    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u DT=%lu OV=%lu F=%u TD=%lu\r\n",
+    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u DT=%lu OV=%lu F=%u TD=%lu ARM=%u RM=%lu RC=%lu ST=%lu RCM=%lu RLM=%lu TR=%u\r\n",
            (int)g_mode,
            (int)dbg.state,
-           dbg.tracker.raw_bits,
-           dbg.tracker.position_error,
-           ch.left_pwm,
-           ch.right_pwm,
+           (unsigned int)dbg.tracker.raw_bits,
+           (int)dbg.tracker.position_error,
+           (int)ch.left_pwm,
+           (int)ch.right_pwm,
            (long)g_telemetry_left_encoder_accum,
            (long)g_telemetry_right_encoder_accum,
            (unsigned int)dbg.corner_count,
@@ -318,7 +318,14 @@ static void telemetry_output(void)
            (unsigned long)g_control_max_dt_ms,
            (unsigned long)g_control_overrun_count,
            (unsigned int)dbg.sensor_fault,
-           (unsigned long)BSP_DebugUART_GetTxDroppedCount());
+           (unsigned long)BSP_DebugUART_GetTxDroppedCount(),
+           (unsigned int)dbg.corner_armed,
+           (unsigned long)dbg.corner_rearm_ms,
+           (unsigned long)dbg.corner_rearm_center_ms,
+           (unsigned long)dbg.state_time_ms,
+           (unsigned long)dbg.recover_center_ms,
+           (unsigned long)dbg.recover_lost_time_ms,
+           (unsigned int)dbg.transition_reason);
 
     g_telemetry_left_encoder_accum = 0;
     g_telemetry_right_encoder_accum = 0;
@@ -349,7 +356,7 @@ void AppRobot_Init(void)
     printf("\r\n[BOOT] STM32F103 motor speed test demo\r\n");
     printf("[BOOT] Lift the car. Set APP_ENABLE_MOTOR_SPEED_TEST_DEMO=0 to return line follow.\r\n");
 #else
-    printf("\r\n[BOOT] STM32F103 rectangle line car demo\r\n");
+    printf("\r\n[BOOT] STM32F103 rectangle line car TELEMETRY V3\r\n");
 #endif
 
     Chassis_Init(TB6612_GetDriver());

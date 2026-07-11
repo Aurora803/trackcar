@@ -28,6 +28,8 @@ extern "C" {
 #define APP_CONTROL_OVERRUN_WARN_MS    20U
 /* 串口遥测周期，单位 ms。printf 使用中断 TX 队列；周期过短仍可能填满队列并丢字符。 */
 #define APP_TELEMETRY_PERIOD_MS        200U
+/* 1: 每次状态真正变化时通过非阻塞调试串口输出一条 EV 诊断日志。 */
+#define LINE_ENABLE_TRANSITION_TRACE   1
 
 /* 1: boot into wheel speed test demo. Lift the car before flashing/running. */
 #define APP_ENABLE_MOTOR_SPEED_TEST_DEMO 0
@@ -128,7 +130,7 @@ extern "C" {
 #define LINE_CORNER_USE_ENCODER        1
 /* LINE_CORNER_USE_ENCODER=0 时的直角弯定时退出时间，单位 ms，需要实车低速微调。 */
 #define LINE_CORNER_TIME_MS            520U
-#define LINE_CORNER_ENCODER_TARGET     550
+#define LINE_CORNER_ENCODER_TARGET     495
 #define LINE_CORNER_CENTER_ENABLE_ENCODER 500  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
 #define LINE_CORNER_CENTER_SEARCH_MS   220U
 #define LINE_CORNER_DEBOUNCE_COUNT     6U  /* 连续检测到同向直角特征后才切入转角状态。 */
@@ -146,6 +148,7 @@ extern "C" {
 #define LINE_RECOVER_LOST_PWM        170
 
 #define LINE_RECOVER_CENTER_CONFIRM_MS  250U
+#define LINE_RECOVER_CENTER_ERROR_MAX    200
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   650
@@ -156,6 +159,7 @@ extern "C" {
 #define LINE_BASE_PWM_SLOW             200
 /* 转弯恢复、丢线搜索、直角弯专用 PWM。方向和实际速度需要实车低速验证。 */
 #define LINE_RECOVER_PWM               200
+#define LINE_RECOVER_CORRECTION_LIMIT  40
 #define LINE_BLIND_BASE_PWM            90
 #define LINE_BLIND_TURN_PWM            220
 #define LINE_CORNER_INNER_PWM          60
