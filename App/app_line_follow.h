@@ -32,6 +32,14 @@ typedef enum
     LINE_STATE_LOST
 } line_follow_state_t;
 
+typedef enum
+{
+    LINE_SENSOR_FAULT_NONE = 0,
+    LINE_SENSOR_FAULT_ALL_INACTIVE,
+    LINE_SENSOR_FAULT_ALL_ACTIVE,
+    LINE_SENSOR_FAULT_DRIVER_INVALID
+} line_sensor_fault_t;
+
 typedef struct
 {
     /* 最近一次 8 路循迹采样。 */
@@ -47,14 +55,39 @@ typedef struct
     uint16_t corner_count;      /* completed 90-degree corners */
     /* 当前直角弯累计编码器计数；时间转弯模式下仍保留用于调试。 */
     uint16_t corner_encoder_sum;
+    /* 0 正常，1 长时间全未触发，2 长时间全触发，3 驱动报告无效。 */
+    line_sensor_fault_t sensor_fault;
     /* 当前状态已持续时间，单位 ms。 */
     uint32_t state_time_ms;
+
+    /* 直角检测是否已使能。 */
+    uint8_t corner_armed;
+
+    /* 直角重新使能的剩余冷却时间，单位 ms。 */
+    uint32_t corner_rearm_ms;
+
+    /* 中心稳定确认已经累计的时间，单位 ms。 */
+    uint32_t corner_rearm_center_ms;
+
+    /* RECOVER 中心稳定确认累计时间，单位 ms。 */
+    uint32_t recover_center_ms;
+
+    /* RECOVER 连续丢线确认累计时间，单位 ms。 */
+    uint32_t recover_lost_time_ms;
+
+    /* 最近一次状态转换原因，仅用于遥测诊断。 */
+    uint8_t transition_reason;
 } line_follow_debug_t;
 
 /**
  * @brief 初始化循迹控制器并绑定传感器驱动。
  */
 void AppLineFollow_Init(const tracker8_driver_t *tracker_driver);
+
+/**
+ * @brief 停车并把循迹状态机复位到 START，供蓝牙重新启动前调用。
+ */
+void AppLineFollow_Reset(void);
 
 /**
  * @brief 运行一次循迹状态机。

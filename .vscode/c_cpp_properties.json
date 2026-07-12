@@ -3,12 +3,12 @@
         {
             "name": "Target_1",
             "includePath": [
-                "d:\\Development\\Projects\\stm32\\trackcar gpt\\Start",
-                "d:\\Development\\Projects\\stm32\\trackcar gpt\\User",
-                "d:\\Development\\Projects\\stm32\\trackcar gpt\\Library",
-                "d:\\Development\\Projects\\stm32\\trackcar gpt\\App",
-                "d:\\Development\\Projects\\stm32\\trackcar gpt\\BSP",
-                "d:\\Development\\Projects\\stm32\\trackcar gpt\\Components"
+                "d:\\Development\\Projects\\stm32\\trackcar competitionn\\Start",
+                "d:\\Development\\Projects\\stm32\\trackcar competitionn\\User",
+                "d:\\Development\\Projects\\stm32\\trackcar competitionn\\Library",
+                "d:\\Development\\Projects\\stm32\\trackcar competitionn\\App",
+                "d:\\Development\\Projects\\stm32\\trackcar competitionn\\BSP",
+                "d:\\Development\\Projects\\stm32\\trackcar competitionn\\Components"
             ],
             "defines": [
                 "USE_STDPERIPH_DRIVER",

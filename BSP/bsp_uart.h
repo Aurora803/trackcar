@@ -3,8 +3,9 @@
  * @brief 串口底层接口。
  * @layer BSP
  *
- * 当前调试串口为 USART2(PA2/PA3)。视觉通信接口为后续预留，本版本临时复用
- * 同一接收缓冲，不代表调试和视觉已有独立硬件串口。
+ * 当前调试串口为 USART2(PA2/PA3)。TX 使用中断驱动环形缓冲，保持 9600
+ * 波特率时也不会等待每个字符发送完成。视觉通信接口为后续预留，本版本
+ * 临时复用同一串口，不代表调试和视觉已有独立硬件串口。
  */
 #ifndef BSP_UART_H
 #define BSP_UART_H
@@ -21,14 +22,24 @@ extern "C" {
 void BSP_UART_Init(void);
 
 /**
- * @brief 阻塞发送一个调试字符。
+ * @brief 非阻塞发送一个调试字符，实际发送由 USART2 TXE 中断完成。
  */
 void BSP_DebugUART_SendChar(char ch);
 
 /**
- * @brief 阻塞发送调试字符串。
+ * @brief 非阻塞发送调试字符串。
  */
 void BSP_DebugUART_SendString(const char *str);
+
+/**
+ * @brief 获取因 TX 队列已满而丢弃的字符累计数。
+ */
+uint32_t BSP_DebugUART_GetTxDroppedCount(void);
+
+/**
+ * @brief 非阻塞读取一个 USART2/蓝牙接收字符。
+ */
+int BSP_DebugUART_ReadCharNonBlocking(char *out_ch);
 
 /**
  * @brief 发送 name=value 调试行。

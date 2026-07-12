@@ -15,7 +15,7 @@ extern "C" {
 
 typedef enum
 {
-    /* 8 路红外循迹模式，当前默认模式。 */
+    /* 8 路红外循迹模式，由蓝牙 START/1 命令进入。 */
     ROBOT_MODE_LINE_FOLLOW = 0,
     /* 视觉目标跟踪预留模式，当前默认配置不启用视觉/云台输出。 */
     ROBOT_MODE_TARGET_TRACK,
@@ -37,7 +37,7 @@ void AppRobot_Task(void);
 
 /**
  * @brief 切换机器人运行模式。
- * @note 切到 ROBOT_MODE_STOP 时立即停止底盘输出。
+ * @note 切到 STOP 时立即停止；从其他模式进入 LINE_FOLLOW 时会复位循迹状态机。
  */
 void AppRobot_SetMode(robot_mode_t mode);
 

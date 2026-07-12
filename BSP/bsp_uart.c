@@ -3,8 +3,9 @@
  * @brief USART2 调试串口和预留视觉串口接口。
  * @layer BSP
  *
- * 当前 PA2/PA3 用作 USART2 调试口。printf/fputc 采用阻塞发送，适合调试，
- * 不适合作为高频实时日志。USART2 接收中断只把字节放入环形缓冲。
+ * 当前 PA2/PA3 用作 USART2 调试口。printf/fputc 只把字节放入 TX 环形缓冲，
+ * 实际发送由 TXE 中断完成，避免 9600 波特率日志阻塞 10ms 控制循环。
+ * USART2 接收中断同样只把字节放入 RX 环形缓冲。
  */
 #include "bsp_uart.h"
 #include "app_config.h"
@@ -12,10 +13,15 @@
 #include <stdio.h>
 
 #define UART2_RX_BUFFER_SIZE 128U
+#define UART2_TX_BUFFER_SIZE 256U
 
 static volatile char g_uart2_rx_buffer[UART2_RX_BUFFER_SIZE];
 static volatile uint16_t g_uart2_rx_head = 0U;
 static volatile uint16_t g_uart2_rx_tail = 0U;
+static volatile char g_uart2_tx_buffer[UART2_TX_BUFFER_SIZE];
+static volatile uint16_t g_uart2_tx_head = 0U;
+static volatile uint16_t g_uart2_tx_tail = 0U;
+static volatile uint32_t g_uart2_tx_dropped = 0U;
 
 #if VISION_UART_USE_USART1
 #error "VISION_UART_USE_USART1 is reserved: USART1_TX PA9 conflicts with TIM1_CH2 left motor PWM on current hardware."
@@ -59,7 +65,7 @@ static void uart_init_one(USART_TypeDef *uart, uint32_t baudrate)
 }
 
 /**
- * @brief 初始化 USART2 调试串口和 RXNE 中断。
+ * @brief 初始化 USART2 调试串口、RXNE 中断和按需启用的 TXE 中断。
  */
 void BSP_UART_Init(void)
 {
@@ -70,6 +76,14 @@ void BSP_UART_Init(void)
     uart_gpio_init();
     uart_init_one(USART2, DEBUG_UART_BAUDRATE);
 
+    g_uart2_rx_head = 0U;
+    g_uart2_rx_tail = 0U;
+    g_uart2_tx_head = 0U;
+    g_uart2_tx_tail = 0U;
+    g_uart2_tx_dropped = 0U;
+
+    /* TXE 仅在发送队列非空时启用，空闲状态不会持续进入中断。 */
+    USART_ITConfig(USART2, USART_IT_TXE, DISABLE);
     USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
 
     nvic.NVIC_IRQChannel = USART2_IRQn;
@@ -80,20 +94,38 @@ void BSP_UART_Init(void)
 }
 
 /**
- * @brief 阻塞发送一个字符。
- * @note 高频调用会占用主循环时间，控制周期敏感时应降低输出频率。
+ * @brief 尝试将一个字符加入 USART2 TX 环形缓冲。
+ * @return 1 表示成功入队，0 表示缓冲已满且该字符被丢弃。
  */
-void BSP_DebugUART_SendChar(char ch)
+static uint8_t uart2_tx_enqueue(char ch)
 {
-    while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET)
+    uint16_t next = (uint16_t)((g_uart2_tx_head + 1U) % UART2_TX_BUFFER_SIZE);
+
+    if (next == g_uart2_tx_tail)
     {
-        ;
+        g_uart2_tx_dropped++;
+        return 0U;
     }
-    USART_SendData(USART2, (uint16_t)ch);
+
+    g_uart2_tx_buffer[g_uart2_tx_head] = ch;
+    g_uart2_tx_head = next;
+
+    /* 写入 head 后再打开 TXE；ISR 在队列空时自动关闭该中断。 */
+    USART_ITConfig(USART2, USART_IT_TXE, ENABLE);
+    return 1U;
 }
 
 /**
- * @brief 阻塞发送字符串。
+ * @brief 非阻塞发送一个字符。
+ * @note 本函数只负责入队；缓冲满时丢弃字符，不等待串口硬件。
+ */
+void BSP_DebugUART_SendChar(char ch)
+{
+    (void)uart2_tx_enqueue(ch);
+}
+
+/**
+ * @brief 非阻塞发送字符串。
  */
 void BSP_DebugUART_SendString(const char *str)
 {
@@ -159,7 +191,7 @@ void BSP_VisionUART_SendString(const char *str)
 /**
  * @brief 从 USART2 环形缓冲非阻塞读取一个字节。
  */
-int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
+int BSP_DebugUART_ReadCharNonBlocking(char *out_ch)
 {
     if (out_ch == 0) return 0;
 
@@ -174,9 +206,18 @@ int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
 }
 
 /**
- * @brief USART2 RXNE 中断处理。
+ * @brief 视觉预留接口，当前复用 USART2/蓝牙接收缓冲。
+ */
+int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
+{
+    return BSP_DebugUART_ReadCharNonBlocking(out_ch);
+}
+
+/**
+ * @brief USART2 RXNE/TXE 中断处理。
  *
- * 中断内只读接收寄存器并写入环形缓冲，不做 printf、协议解析或控制逻辑。
+ * RXNE 分支只接收字节，TXE 分支只发送队列中的下一个字节；
+ * 中断内不做 printf、协议解析或控制逻辑。
  */
 void BSP_UART2_IRQHandler(void)
 {
@@ -191,6 +232,27 @@ void BSP_UART2_IRQHandler(void)
         }
         USART_ClearITPendingBit(USART2, USART_IT_RXNE);
     }
+
+    if (USART_GetITStatus(USART2, USART_IT_TXE) != RESET)
+    {
+        if (g_uart2_tx_tail != g_uart2_tx_head)
+        {
+            USART_SendData(USART2, (uint16_t)g_uart2_tx_buffer[g_uart2_tx_tail]);
+            g_uart2_tx_tail = (uint16_t)((g_uart2_tx_tail + 1U) % UART2_TX_BUFFER_SIZE);
+        }
+        else
+        {
+            USART_ITConfig(USART2, USART_IT_TXE, DISABLE);
+        }
+    }
+}
+
+/**
+ * @brief 返回因 TX 缓冲已满而丢弃的字符累计数。
+ */
+uint32_t BSP_DebugUART_GetTxDroppedCount(void)
+{
+    return g_uart2_tx_dropped;
 }
 
 #if defined(__GNUC__)
@@ -210,7 +272,7 @@ int _write(int file, char *ptr, int len)
 #endif
 
 /**
- * @brief printf/fputc 重定向到调试串口。
+ * @brief printf/fputc 非阻塞重定向到调试串口 TX 队列。
  */
 int fputc(int ch, FILE *f)
 {

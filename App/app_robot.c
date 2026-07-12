@@ -23,13 +23,24 @@
 #endif
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
-static robot_mode_t g_mode = ROBOT_MODE_LINE_FOLLOW;
+#if APP_ENABLE_BLUETOOTH_CONTROL && APP_ENABLE_VISION_TARGET
+#error "Bluetooth control and vision protocol cannot share the USART2 RX buffer at the same time."
+#endif
+
+#define BLUETOOTH_CMD_BUFFER_SIZE 16U
+
+static robot_mode_t g_mode = ROBOT_MODE_STOP;
 static uint32_t g_last_control_ms = 0U;
 static uint32_t g_last_telemetry_ms = 0U;
 static uint32_t g_last_led_ms = 0U;
 static int32_t g_telemetry_left_encoder_accum = 0;
 static int32_t g_telemetry_right_encoder_accum = 0;
+static uint32_t g_control_max_dt_ms = 0U;
+static uint32_t g_control_overrun_count = 0U;
+static char g_bluetooth_cmd_buffer[BLUETOOTH_CMD_BUFFER_SIZE];
+static uint8_t g_bluetooth_cmd_len = 0U;
 
 #if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
 typedef enum
@@ -171,11 +182,78 @@ static void motor_test_update(uint32_t now)
 }
 #endif
 
+#if APP_ENABLE_BLUETOOTH_CONTROL
+static void bluetooth_execute_command(const char *command)
+{
+    if (strcmp(command, "START") == 0 || strcmp(command, "GO") == 0 || strcmp(command, "1") == 0)
+    {
+        AppRobot_SetMode(ROBOT_MODE_LINE_FOLLOW);
+        BSP_DebugUART_SendString("ACK START\r\n");
+    }
+    else if (strcmp(command, "STOP") == 0 || strcmp(command, "0") == 0)
+    {
+        AppRobot_SetMode(ROBOT_MODE_STOP);
+        BSP_DebugUART_SendString("ACK STOP\r\n");
+    }
+    else
+    {
+        BSP_DebugUART_SendString("ERR CMD USE START/STOP OR 1/0\r\n");
+    }
+}
+
+static void bluetooth_command_poll(void)
+{
+    char ch;
+
+    while (BSP_DebugUART_ReadCharNonBlocking(&ch))
+    {
+        if ((ch == '1' || ch == '0') && g_bluetooth_cmd_len == 0U)
+        {
+            g_bluetooth_cmd_buffer[0] = ch;
+            g_bluetooth_cmd_buffer[1] = '\0';
+            bluetooth_execute_command(g_bluetooth_cmd_buffer);
+            continue;
+        }
+
+        if (ch == '\r' || ch == '\n')
+        {
+            if (g_bluetooth_cmd_len > 0U)
+            {
+                g_bluetooth_cmd_buffer[g_bluetooth_cmd_len] = '\0';
+                bluetooth_execute_command(g_bluetooth_cmd_buffer);
+                g_bluetooth_cmd_len = 0U;
+            }
+            continue;
+        }
+
+        if (ch >= 'a' && ch <= 'z')
+        {
+            ch = (char)(ch - ('a' - 'A'));
+        }
+
+        if (ch == ' ' && g_bluetooth_cmd_len == 0U)
+        {
+            continue;
+        }
+
+        if (g_bluetooth_cmd_len < (BLUETOOTH_CMD_BUFFER_SIZE - 1U))
+        {
+            g_bluetooth_cmd_buffer[g_bluetooth_cmd_len++] = ch;
+        }
+        else
+        {
+            g_bluetooth_cmd_len = 0U;
+            BSP_DebugUART_SendString("ERR CMD TOO LONG\r\n");
+        }
+    }
+}
+#endif
+
 /**
  * @brief 输出当前调试遥测。
  *
- * 当前 printf 通过 USART2 阻塞发送。50ms 输出一行适合调试，但正式高速闭环
- * 时应降低频率或改为非阻塞发送，避免串口占用主循环时间。
+ * 当前 printf 通过 USART2 TXE 中断队列非阻塞发送。遥测周期为 500ms，
+ * 保留完整字段的同时避免 9600 波特率发送过程占用主控制循环。
  */
 static void telemetry_output(void)
 {
@@ -196,7 +274,7 @@ static void telemetry_output(void)
             diff_percent = 0;
         }
 
-        printf("MT CYCLE=%lu PH=%s T=%lu LPWM=%d RPWM=%d LE=%ld RE=%ld LA=%ld RA=%ld LSUM=%ld RSUM=%ld DIFF=%ld%%\r\n",
+        printf("MT CYCLE=%lu PH=%s T=%lu LPWM=%d RPWM=%d LE=%ld RE=%ld LA=%ld RA=%ld LSUM=%ld RSUM=%ld DIFF=%ld%% DT=%lu OV=%lu TD=%lu\r\n",
                (unsigned long)g_motor_test_cycle,
                motor_test_phase_name(g_motor_test_phase),
                (unsigned long)(BSP_GetTickMs() - g_motor_test_phase_start_ms),
@@ -208,33 +286,51 @@ static void telemetry_output(void)
                (long)g_telemetry_right_encoder_abs_accum,
                (long)g_motor_test_left_abs_sum,
                (long)g_motor_test_right_abs_sum,
-               (long)diff_percent);
+               (long)diff_percent,
+               (unsigned long)g_control_max_dt_ms,
+               (unsigned long)g_control_overrun_count,
+               (unsigned long)BSP_DebugUART_GetTxDroppedCount());
 
         g_telemetry_left_encoder_accum = 0;
         g_telemetry_right_encoder_accum = 0;
         g_telemetry_left_encoder_abs_accum = 0;
         g_telemetry_right_encoder_abs_accum = 0;
+        g_control_max_dt_ms = 0U;
+        g_control_overrun_count = 0U;
         return;
     }
 #endif
 
     dbg = AppLineFollow_GetDebug();
 
-    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u\r\n",
+    printf("M=%d S=%d RAW=0x%02X ERR=%d LPWM=%d RPWM=%d LE=%ld RE=%ld C=%u DIR=%d SUM=%u DT=%lu OV=%lu F=%u TD=%lu ARM=%u RM=%lu RC=%lu ST=%lu RCM=%lu RLM=%lu TR=%u\r\n",
            (int)g_mode,
            (int)dbg.state,
-           dbg.tracker.raw_bits,
-           dbg.tracker.position_error,
-           ch.left_pwm,
-           ch.right_pwm,
+           (unsigned int)dbg.tracker.raw_bits,
+           (int)dbg.tracker.position_error,
+           (int)ch.left_pwm,
+           (int)ch.right_pwm,
            (long)g_telemetry_left_encoder_accum,
            (long)g_telemetry_right_encoder_accum,
            (unsigned int)dbg.corner_count,
            (int)dbg.corner_dir,
-           (unsigned int)dbg.corner_encoder_sum);
+           (unsigned int)dbg.corner_encoder_sum,
+           (unsigned long)g_control_max_dt_ms,
+           (unsigned long)g_control_overrun_count,
+           (unsigned int)dbg.sensor_fault,
+           (unsigned long)BSP_DebugUART_GetTxDroppedCount(),
+           (unsigned int)dbg.corner_armed,
+           (unsigned long)dbg.corner_rearm_ms,
+           (unsigned long)dbg.corner_rearm_center_ms,
+           (unsigned long)dbg.state_time_ms,
+           (unsigned long)dbg.recover_center_ms,
+           (unsigned long)dbg.recover_lost_time_ms,
+           (unsigned int)dbg.transition_reason);
 
     g_telemetry_left_encoder_accum = 0;
     g_telemetry_right_encoder_accum = 0;
+    g_control_max_dt_ms = 0U;
+    g_control_overrun_count = 0U;
 #if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
     g_telemetry_left_encoder_abs_accum = 0;
     g_telemetry_right_encoder_abs_accum = 0;
@@ -260,7 +356,7 @@ void AppRobot_Init(void)
     printf("\r\n[BOOT] STM32F103 motor speed test demo\r\n");
     printf("[BOOT] Lift the car. Set APP_ENABLE_MOTOR_SPEED_TEST_DEMO=0 to return line follow.\r\n");
 #else
-    printf("\r\n[BOOT] STM32F103 rectangle line car demo\r\n");
+    printf("\r\n[BOOT] STM32F103 rectangle line car TELEMETRY V3\r\n");
 #endif
 
     Chassis_Init(TB6612_GetDriver());
@@ -277,12 +373,21 @@ void AppRobot_Init(void)
     g_last_control_ms = BSP_GetTickMs();
     g_last_telemetry_ms = g_last_control_ms;
     g_last_led_ms = g_last_control_ms;
+    g_control_max_dt_ms = 0U;
+    g_control_overrun_count = 0U;
 
 #if APP_ENABLE_MOTOR_SPEED_TEST_DEMO
     g_mode = ROBOT_MODE_MOTOR_TEST;
     motor_test_enter_phase(MOTOR_TEST_PHASE_WAIT, g_last_control_ms);
 #else
+#if APP_ENABLE_BLUETOOTH_CONTROL
+    g_mode = ROBOT_MODE_STOP;
+    g_bluetooth_cmd_len = 0U;
+    Chassis_StopCoast();
+    BSP_DebugUART_SendString("READY STOP CMD=START/STOP OR 1/0\r\n");
+#else
     g_mode = ROBOT_MODE_LINE_FOLLOW;
+#endif
 #endif
 }
 
@@ -296,13 +401,27 @@ void AppRobot_Task(void)
 {
     uint32_t now = BSP_GetTickMs();
 
+#if APP_ENABLE_BLUETOOTH_CONTROL
+    /* 每次主循环都处理命令，STOP 不需要等待下一个 10ms 控制周期。 */
+    bluetooth_command_poll();
+#endif
+
     if ((now - g_last_control_ms) >= APP_CONTROL_PERIOD_MS)
     {
         uint32_t dt = now - g_last_control_ms;
         g_last_control_ms = now;
 
+        if (dt > g_control_max_dt_ms)
+        {
+            g_control_max_dt_ms = dt;
+        }
+        if (dt >= APP_CONTROL_OVERRUN_WARN_MS)
+        {
+            g_control_overrun_count++;
+        }
+
         /* 编码器采样与控制周期同步。当前仍是 PWM 开环循迹，
-         * 但后续接速度闭环时不会再遇到 50ms 遥测周期数据滞后的问题。
+         * 遥测只读取控制周期累积值，不改变编码器采样节拍。
          */
         Chassis_UpdateEncoder();
         {
@@ -367,15 +486,23 @@ void AppRobot_Task(void)
 /**
  * @brief 切换机器人模式。
  *
- * 当前只在 STOP 模式切入时立即空转停止；其他模式的状态恢复由各自任务处理。
+ * STOP 立即空转停车；从其他模式进入循迹时先复位状态机，再等待 START 稳定期。
  */
 void AppRobot_SetMode(robot_mode_t mode)
 {
-    g_mode = mode;
-    if (g_mode == ROBOT_MODE_STOP)
+    if (mode == ROBOT_MODE_STOP)
     {
+        g_mode = ROBOT_MODE_STOP;
         Chassis_StopCoast();
+        return;
     }
+
+    if (mode == ROBOT_MODE_LINE_FOLLOW && g_mode != ROBOT_MODE_LINE_FOLLOW)
+    {
+        AppLineFollow_Reset();
+    }
+
+    g_mode = mode;
 }
 
 /**

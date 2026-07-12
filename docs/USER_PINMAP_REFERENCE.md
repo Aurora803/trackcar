@@ -1,5 +1,9 @@
 # STM32 循迹小车 — 完整接线图
 
+> **来源说明：** 本文件最初来自重构前接线资料，已按当前目录、权重和 SysTick
+> 调度方式校正。若与代码冲突，软件引脚仍以 `docs/PINMAP.md`、`App/app_config.h`
+> 和 BSP 源码为准；电源电压必须按实物模块规格确认。
+
 > 项目: `D:\Development\Projects\stm32\trackcar`
 > MCU: STM32F103C8T6 (LQFP48, 72MHz)
 > 主电源: 12V 锂电池
@@ -115,12 +119,12 @@ PWM 频率: **1 kHz** (TIM1, ARR=999, PSC=71)，占空比范围 0~1000
      ▼       ▼       ▼       ▼       ▼       ▼       ▼       ▼
     PB11    PB10    PB1     PB0     PA7     PA6     PA5     PA4
 
-  权重值:   -7      -5      -3      -1      +1      +3      +5      +7
+  权重值: -1200   -800    -400    -100    +100    +400    +800   +1200
 ```
 
-- **低电平有效** (LINE_LEVEL = 0): 黑线 = 低电平，白色 = 高电平
+- **低电平有效** (`TRACKER_BLACK_ACTIVE_LOW = 1`): 黑线 = 低电平，白色 = 高电平
 - 所有引脚 **内部上拉** 使能，默认高电平
-- `TRACK_LOST = 127` 表示所有传感器均未检测到线
+- `raw_bits = 0x00` 且状态为 `TRACKER_STATUS_LOST` 表示所有传感器均未检测到线
 
 ### 3.4 调试串口 — USART2
 
@@ -141,8 +145,8 @@ PWM 频率: **1 kHz** (TIM1, ARR=999, PSC=71)，占空比范围 0~1000
 | 功能 | 引脚 | 说明 |
 |------|------|------|
 | HSE 晶振 | OSC_IN / OSC_OUT | 8 MHz 外部晶振 → PLL 倍频到 72 MHz |
-| 控制定时器 | TIM3 (无外部引脚) | 10ms 控制周期中断 (ARR=999, PSC=719) |
-| 阻塞延时 | SysTick (无外部引脚) | HCLK/8 = 9MHz 时基 |
+| 系统节拍 | SysTick (无外部引脚) | 1ms 中断，仅累计毫秒 tick |
+| 控制调度 | 主循环软件调度 | 每 10ms 调用一次控制任务，TIM3 当前保留 |
 
 ## 4. 引脚占用速查表
 
@@ -185,13 +189,12 @@ PWM 频率: **1 kHz** (TIM1, ARR=999, PSC=71)，占空比范围 0~1000
 
 | 文件 | 功能 |
 |------|------|
-| `hardware/pwm.c` | TIM1 PWM 初始化 (PA8/PA9) |
-| `hardware/motor.c` | TB6612 方向控制 (PB12~PB15) |
-| `hardware/encoder.c` | TIM2/TIM4 编码器捕获 |
-| `hardware/track.c` | 8路循迹传感器读取 |
-| `hardware/timer.c` | TIM3 10ms 控制周期 |
-| `hardware/usart.c` | USART2 调试串口 |
-| `hardware/sys.c` | SysTick 阻塞延时 |
-| `hardware/car_control.c` | 上层控制逻辑 / 状态机 |
-| `hardware/pid.c` | PID 控制器 |
-| `main.c` | 主程序入口 |
+| `BSP/bsp_pwm.c` | TIM1 PWM 初始化 (PA8/PA9) |
+| `Components/tb6612_motor.c` | TB6612 方向控制 (PB12~PB15) |
+| `BSP/bsp_encoder.c` | TIM2/TIM4 编码器采样 |
+| `Components/yahboom_tracker8_io.c` | 8路循迹传感器读取 |
+| `BSP/bsp_systick.c` | SysTick 1ms 系统节拍 |
+| `BSP/bsp_uart.c` | USART2 收发与 TXE 中断队列 |
+| `App/app_line_follow.c` | 上层循迹状态机 |
+| `Components/pid.c` | 通用 PID 控制器（当前参数为纯 P） |
+| `User/main.c` | 主程序入口 |
