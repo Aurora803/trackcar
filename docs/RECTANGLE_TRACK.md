@@ -1,152 +1,122 @@
 # 矩形循迹说明
 
-本文记录当前矩形循迹的实际状态、串口字段含义和赛前调试重点。当前版本先不接 OpenMV / 树莓派视觉，底盘只做矩形循迹。
+本文描述 `school-competition-line-v1` 的真实源码行为和连续 5 圈实车结果。循迹模块已冻结；视觉和云台当前未启用。
 
-## 1. 当前模式
+## 1. 当前稳定配置
 
-当前循迹模式：
-
-- 赛道方向：按当前配置固定左转；
-- 直线循迹：8 路循迹传感器 + 位置式 PID 差速；
-- 直角弯：传感器识别进入 `CORNER`，优先按编码器累计退出；
-- 速度控制：仍是 PWM 开环，不做左右轮速度闭环；
-- 编码器状态：右编码器 `RE` 有效，左编码器 `LE` 暂不可靠。
-- 启停方式：上电默认 STOP，蓝牙 `START/1` 启动，`STOP/0` 停车。
-
-当前关键配置以 `App/app_config.h` 为准：
+以下参数来自 `App/app_config.h`，是校赛稳定配置：
 
 ```c
-#define RECT_DEFAULT_CORNER_DIR        (-1)
-#define RECT_ENABLE_CROSS_CORNER       1
-
-#define LINE_CORNER_USE_ENCODER        1
-#define LINE_CORNER_ENCODER_TARGET     550
-#define LINE_CORNER_CENTER_ENABLE_ENCODER 500
-#define LINE_CORNER_DEBOUNCE_COUNT     6U
-#define LINE_CORNER_EXIT_CONFIRM_MS    30U
-
-#define LINE_BASE_PWM_FAST             240
-#define LINE_BASE_PWM_MID              220
-#define LINE_BASE_PWM_SLOW             200
-#define LINE_RECOVER_PWM               200
-#define LINE_CORNER_INNER_PWM          60
-#define LINE_CORNER_OUTER_PWM          280
-#define LINE_CORNER_ALIGN_INNER_PWM    120
-#define LINE_CORNER_ALIGN_OUTER_PWM    180
-#define LINE_BLIND_TIMEOUT_MS          2000U
+#define RECT_DEFAULT_CORNER_DIR          (-1)
+#define RECT_ENABLE_CROSS_CORNER         1
+#define LINE_CORNER_USE_ENCODER          1
+#define LINE_CORNER_ENCODER_TARGET       495
+#define LINE_RECOVER_CORRECTION_LIMIT    40
+#define LINE_RECOVER_PWM                 200
+#define LINE_RECOVER_CENTER_CONFIRM_MS   250U
 ```
 
-注意：如果烧录后串口里 `S=3` 时 `SUM` 仍经常跑到 1000 以上才退出，说明固件可能没有烧到最新版本，或者编码器退出条件没有真正生效。
+源码中的角点编码器判定是：
 
-## 2. 状态机
-
-```text
-START -> FOLLOW -> CORNER -> RECOVER -> FOLLOW
-              \-> BLIND -> RECOVER -> FOLLOW
-              \-> LOST
+```c
+g_corner_encoder_sum >= LINE_CORNER_ENCODER_TARGET
 ```
+
+历史出现过的 `450/550/600` 均为历史实验参数，当前已停用，不代表校赛稳定配置。
+
+## 2. 工作模式
+
+- 赛道方向按当前配置固定左转；
+- 直线由 8 路循迹传感器计算位置误差，使用纯 P 差速；
+- 直角由传感器识别进入 `CORNER`，优先使用对应外轮编码器累计值；
+- 底盘为开环 PWM，不启用左右轮速度闭环；
+- 蓝牙启用时上电默认 STOP，`START/1` 启动，`STOP/0` 停车。
+
+## 3. 状态机与实车链路
 
 | 状态 | 编号 | 含义 |
 |---|---:|---|
-| `LINE_STATE_START` | 0 | 每次蓝牙启动后的 200ms 稳定等待 |
-| `LINE_STATE_FOLLOW` | 1 | 正常循迹 |
-| `LINE_STATE_BLIND` | 2 | 暂时丢线，按最后误差方向低速找线 |
-| `LINE_STATE_CORNER` | 3 | 直角弯转向 |
-| `LINE_STATE_RECOVER` | 4 | 出弯或找回线后的低速恢复 |
-| `LINE_STATE_LOST` | 5 | 长时间找不到线，停车 |
+| `START` | 0 | 启动后 200 ms 稳定等待 |
+| `FOLLOW` | 1 | 正常循迹 |
+| `BLIND` | 2 | 暂时丢线并搜索 |
+| `CORNER` | 3 | 直角转向 |
+| `RECOVER` | 4 | 捕线后的低速恢复 |
+| `LOST` | 5 | 搜索超时或故障后停车 |
 
-当前最常见失败链路：
-
-```text
-S=3 CORNER
-S=4 RECOVER
-S=2 BLIND RAW=0x00
-S=5 LOST
-```
-
-这表示直角后传感器没有重新压回黑线，最后停车。
-
-## 3. 8 路传感器
-
-传感器从车头视角左到右对应：
+现场常见的角点状态链不是 `CORNER` 直接回到 `FOLLOW`，而是：
 
 ```text
-X1 X2 X3 X4 X5 X6 X7 X8
-左 ------------------ 右
-bit0              bit7
+FOLLOW -> CORNER -> BLIND -> RECOVER -> FOLLOW
+ TR=2      TR=7      TR=8       TR=10
 ```
 
-当前直线较好的串口形态：
+部分情况下还会出现：
 
 ```text
-RAW=0x18 ERR=0
-RAW=0x1C ERR=-133
-RAW=0x38 ERR=133
+RECOVER --TR=11--> BLIND --TR=8--> RECOVER --TR=10--> FOLLOW
 ```
 
-需要重点检查的异常：
+这说明恢复期间短暂再次丢线，但车辆仍可重新捕获中心线。不能把当前效果描述为“所有角点状态链完全理想”。准确结论是：角点后容错恢复机制能够有效重新捕获中心线，当前版本满足校赛展示稳定性要求，但仍存在恢复路径偏长的优化空间。
 
-- `RAW=0x00`：完全丢线，或者传感器没有看到黑线；
-- `RAW=0xFF`：全黑，悬空测试时可能出现，放在跑道上若频繁出现则说明阈值/高度过灵敏；
-- `RAW=0x1A / 0x3A`：出现 X2、X4 亮但 X3 不亮，建议单独检查 X3 的高度、阈值和接线。
+## 4. 迁移原因码
 
-## 4. 直角识别
+| `TR` | 源码含义 |
+|---:|---|
+| 1 | START 到 FOLLOW |
+| 2 | FOLLOW 识别直角进入 CORNER |
+| 3 | FOLLOW 丢线进入 BLIND |
+| 4 | CORNER 达编码器目标退出 |
+| 5 | CORNER 中心确认退出 |
+| 6 | CORNER 超时退出 |
+| 7 | CORNER 转入 BLIND 找线 |
+| 8 | BLIND 重新捕线进入 RECOVER |
+| 9 | BLIND 超时进入 LOST |
+| 10 | RECOVER 稳定回到 FOLLOW |
+| 11 | RECOVER 再次丢线回到 BLIND |
+| 12 | LOST 重新捕线进入 RECOVER |
+| 13 | 传感器故障进入 LOST |
 
-当前代码中，一侧 3 路以上触发且另一侧很少触发时成为直角候选，连续 6 帧同方向候选才进入直角弯。方向不再由左右侧形态决定，而是统一使用：
+## 5. 传感器与角点处理
 
-```c
-#define RECT_DEFAULT_CORNER_DIR (-1)
-```
+X1~X8 从车头视角由左到右，对应 `RAW` 的 bit0~bit7。常见中心附近数据为 `RAW=0x18`，轻微偏移可见 `0x1C` 或 `0x38`；`RAW=0x00` 表示未检测到线，`RAW=0xFF` 表示全触发。
 
-也就是所有直角默认左转。这样做是为了避免同一个矩形跑道上由于传感器形态变化导致 `DIR=-1 / DIR=1` 来回跳。
+直角候选需连续 6 帧成立。进入 `CORNER` 后累计对应编码器绝对增量；达到目标或满足其他退出条件后尝试中心确认。若不能在角点阶段稳定捕获有效线，状态机以 `TR=7` 进入 `BLIND`，再以 `TR=8` 进入 `RECOVER`。`RECOVER` 只有在恢复时长满足且中心连续确认达到 250 ms 后，才以 `TR=10` 返回 `FOLLOW`。
 
-达到中心门槛或编码器目标后，电机会先切到 120/180 的柔和对线 PWM；中心线或
-有效线连续确认 30ms 后才进入 `RECOVER`，单帧噪声不会直接结束直角。
+## 6. 调试日志
 
-如果之后换成全右转赛道，只改：
-
-```c
-#define RECT_DEFAULT_CORNER_DIR 1
-```
-
-## 5. 串口字段
-
-当前 USART2 输出示例：
+周期遥测字段：
 
 ```text
-M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610 DT=10 OV=0 F=0 TD=0
+M S RAW ERR LPWM RPWM LE RE C DIR SUM DT OV F TD ARM RM RC ST RCM RLM TR
 ```
 
-| 字段 | 含义 |
-|---|---|
-| `M` | 模式，0 为循迹 |
-| `S` | 状态机编号 |
-| `RAW` | 8 路循迹位，1 表示检测到黑线 |
-| `ERR` | 位置误差，左负右正 |
-| `LPWM/RPWM` | 当前左右轮 PWM 命令 |
-| `LE/RE` | 左右编码器在最近遥测周期内累计的增量 |
-| `C` | 已完成直角弯次数 |
-| `DIR` | 当前直角方向，-1 左转，1 右转 |
-| `SUM` | 当前直角弯累计编码器计数 |
-| `DT` | 最近 500ms 内最大的控制调度间隔 |
-| `OV` | 最近 500ms 内控制间隔达到 20ms 的次数 |
-| `F` | 传感器健康故障码：0正常，1全未触发超时，2全触发超时，3驱动无效 |
-| `TD` | USART2 TX 队列累计丢字节数 |
+状态变化事件格式：
 
-当前判读重点：
+```text
+EV FROM=<旧状态> TO=<新状态> TR=<原因> OST=<旧状态时长> RAW=<采样> ERR=<误差> SUM=<角点累计> ...
+```
 
-- 直线稳定：`S=1`，`RAW` 在 `0x18 / 0x1C / 0x38` 附近；
-- 正确进弯：`S=3`，`DIR=-1`；
-- 编码器退出是否生效：`S=3` 退出时 `SUM` 应接近 `LINE_CORNER_ENCODER_TARGET`，而不是长期跑到 1000 以上；
-- 出弯稳定：`S=4` 后应回到 `S=1`，不要长期 `RAW=0x00`；
-- 失败停车：`S=5 RAW=0x00 LPWM=0 RPWM=0`。
-- 调度稳定：`DT` 应接近 10，`OV=0`；串口队列不溢出时 `TD=0`。
-- 传感器健康：正常跑道应保持 `F=0`；`F!=0` 时底盘进入 `LOST` 停车。
+判读重点：
 
-## 6. 当前已知问题
+- `S` 为当前状态，`TR` 为最近一次迁移原因；
+- `SUM` 是当前角点编码器累计值；
+- `RCM` 是 RECOVER 中心稳定确认计时，`RLM` 是 RECOVER 丢线确认计时；
+- `DT/OV` 反映调度，`F` 是传感器故障码，`TD` 是串口 TX 队列累计丢字符数。
 
-1. 出弯后仍可能稳不住，第三个弯后容易进入 `BLIND -> LOST`。
-2. 右编码器 `RE` 可用，左编码器 `LE` 暂不可用。
-3. 当前不能做速度闭环，只能做开环低速循迹。
-4. 左右轮实际速度可能不一致，需要后续机械/电机补偿或闭环解决。
-5. 若悬空测试，`RAW=0xFF` 不一定代表跑道上异常；必须以贴近跑道高度测试为准。
+本次连续 5 圈测试的串口工具只保存了部分尾部状态记录。因此日志可辅助分析恢复链路，但不能表述为“完整串口日志证明了 20 个角点”。
+
+## 7. 连续 5 圈结果
+
+- `LINE_CORNER_ENCODER_TARGET=495` 的版本现场连续完成 5 圈；
+- 全程未修改参数；
+- 现场观察确认车辆能够完成矩形循迹运行；
+- 角点主要依靠 `BLIND` 与 `RECOVER` 容错重新捕线；
+- 当前版本适合冻结用于校赛展示。
+
+## 8. 已知限制
+
+1. 恢复链路偶尔较长，`RECOVER` 可能短暂返回 `BLIND`。
+2. 左编码器历史观测不稳定，当前不用于速度闭环。
+3. 左右轮仍为开环 PWM，实际速度差未通过闭环消除。
+4. 完整 5 圈原始串口日志未保留。
+5. 视觉与云台尚未联调，不参与当前循迹运行。

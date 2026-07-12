@@ -73,7 +73,7 @@ PWM 参数：TIM1，1 kHz，PSC=71，ARR=999，占空比 0~1000。
 
 ## 5. 系统节拍与预留定时器
 
-当前控制节拍由 SysTick 提供：`SysTick_Handler()` 每 1 ms 调用 `BSP_SysTick_Inc()`，`AppRobot_Task()` 在主循环中按毫秒差值调度 10 ms 控制、500 ms 遥测和 500 ms LED。USART2 保持 9600 8N1，遥测通过 TXE 中断队列发送，不阻塞主控制循环。
+当前控制节拍由 SysTick 提供：`SysTick_Handler()` 每 1 ms 调用 `BSP_SysTick_Inc()`，`AppRobot_Task()` 在主循环中按毫秒差值调度 10 ms 控制、200 ms 遥测和 500 ms LED。USART2 保持 9600 8N1，遥测通过 TXE 中断队列发送，不阻塞主控制循环。
 
 TIM3 当前代码未占用。若后续要加二自由度舵机云台，优先评估 TIM3 部分重映射到 PB4/PB5；不要使用 PB0/PB1，因为它们已经接循迹 X4/X3。
 

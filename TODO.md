@@ -34,7 +34,7 @@ Assumptions used for the current draft:
 Firmware follow-up items:
 
 1. USART2 `printf` now uses an interrupt-driven TX queue and keeps the Bluetooth link at
-   9600 baud with a 500ms telemetry period. Before adding more telemetry, monitor
+   9600 baud with a 200ms telemetry period. Before adding more telemetry, monitor
    `BSP_DebugUART_GetTxDroppedCount()` and keep the queue from overflowing.
 2. Bluetooth START/STOP commands cannot detect a wireless disconnect through UART alone.
    Add the module STATE pin or a heartbeat timeout if disconnect-to-stop is required.
