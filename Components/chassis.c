@@ -3,7 +3,7 @@
  * @brief 底盘抽象层实现。
  * @layer Components
  *
- * 本层不关心循迹、视觉或模式切换，只统一处理左右轮 PWM 命令、
+ * 本层不关心上层控制模式，只统一处理左右轮 PWM 命令、
  * 停车动作和编码器增量采样。
  */
 #include "chassis.h"
@@ -19,6 +19,9 @@ static chassis_state_t g_state;
  */
 void Chassis_Init(const motor_driver_t *motor_driver)
 {
+    /* 允许空驱动指针，便于在不接电机的情况下调试上层状态机；所有下发点
+     * 都会检查函数指针。正常固件仍应传入 TB6612 驱动。
+     */
     g_motor = motor_driver;
     g_state.left_pwm = 0;
     g_state.right_pwm = 0;
@@ -38,7 +41,7 @@ void Chassis_Init(const motor_driver_t *motor_driver)
  */
 void Chassis_SetPWM(int16_t left_pwm, int16_t right_pwm)
 {
-    /* 底盘层只做通用 PWM 安全限幅，不关心当前是循迹还是后续视觉/云台模式。 */
+    /* 底盘层只做通用 PWM 安全限幅，不关心上层控制模式。 */
     left_pwm = clamp_i16(left_pwm, -CHASSIS_PWM_LIMIT, CHASSIS_PWM_LIMIT);
     right_pwm = clamp_i16(right_pwm, -CHASSIS_PWM_LIMIT, CHASSIS_PWM_LIMIT);
 
@@ -47,6 +50,9 @@ void Chassis_SetPWM(int16_t left_pwm, int16_t right_pwm)
 
     if (g_motor != 0 && g_motor->set_speed_permille != 0)
     {
+        /* 左右轮在同一控制周期连续下发；底层驱动负责将正负 PWM 转换为方向脚
+         * 和绝对占空比，Chassis 不依赖具体电机芯片的接线极性。
+         */
         g_motor->set_speed_permille(MOTOR_CHANNEL_LEFT, left_pwm);
         g_motor->set_speed_permille(MOTOR_CHANNEL_RIGHT, right_pwm);
     }

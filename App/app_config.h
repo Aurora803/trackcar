@@ -4,7 +4,7 @@
  * @layer App
  *
  * 本文件集中保存控制周期、串口波特率、电机 PWM 范围、编码器方向、
- * 8 路循迹权重、矩形赛道状态机参数、视觉/云台预留开关等配置。
+ * 8 路循迹权重和矩形赛道状态机参数等配置。
  * 虽然物理位置在 App 目录，但它当前实际承担跨层 Config 角色；
  * BSP/Components include 本文件只读取宏配置，不代表反向调用 App 业务逻辑。
  *
@@ -31,21 +31,11 @@ extern "C" {
 /* 1: 每次状态真正变化时通过非阻塞调试串口输出一条 EV 诊断日志。 */
 #define LINE_ENABLE_TRANSITION_TRACE   1
 
-/* 1: boot into wheel speed test demo. Lift the car before flashing/running. */
-#define APP_ENABLE_MOTOR_SPEED_TEST_DEMO 0
-#define MOTOR_TEST_PWM                 260
-#define MOTOR_TEST_START_DELAY_MS      2000U
-#define MOTOR_TEST_RUN_MS              3000U
-#define MOTOR_TEST_STOP_MS             1000U
-
 /* ===================== 串口参数 ===================== */
 /* 当前调试口实际为 USART2(PA2/PA3)，保留 DEBUG 命名避免上层关心具体串口号。 */
 #define DEBUG_UART_BAUDRATE            9600U
 /* 1：使用同一 USART2 蓝牙链路接收 START/STOP；启用后默认上电停车。 */
 #define APP_ENABLE_BLUETOOTH_CONTROL   1
-/* 视觉协议预留波特率；当前未分配独立视觉串口。 */
-#define VISION_UART_BAUDRATE           115200U
-
 /* ===================== 电机与驱动参数 ===================== */
 /* TIM1 电机 PWM 频率。更改前需确认 TB6612、电机噪声和低速扭矩表现。 */
 #define MOTOR_PWM_FREQ_HZ              1000U
@@ -70,7 +60,7 @@ extern "C" {
 #define TB6612_BIN2_PORT               GPIOB
 #define TB6612_BIN2_PIN                GPIO_Pin_15
 
-/* PWM: TIM1_CH2 PA9 -> PWMA(左电机)，TIM1_CH1 PA8 -> PWMB(右电机)。不要与 USART1/云台 PWM 复用。 */
+/* PWM: TIM1_CH2 PA9 -> PWMA(左电机)，TIM1_CH1 PA8 -> PWMB(右电机)。不得复用这两个引脚。 */
 #define MOTOR_PWM_TIMER                TIM1
 #define MOTOR_LEFT_PWM_CHANNEL         2U
 #define MOTOR_RIGHT_PWM_CHANNEL        1U
@@ -192,22 +182,6 @@ extern "C" {
 /* PID 输出和积分项限幅，避免丢线/大误差时积分或差速过大。 */
 #define LINE_PID_OUT_LIMIT             160.0f
 #define LINE_PID_INTEGRAL_LIMIT        800.0f
-
-/* ===================== 视觉/云台预留 ===================== */
-/* 视觉目标跟踪应用开关。本轮保持 0，不调度视觉协议和云台目标控制。 */
-#define APP_ENABLE_VISION_TARGET       0
-/* 云台舵机 PWM 开关。本轮保持 0；启用前必须重新规划不冲突的 PWM 引脚。 */
-#define APP_ENABLE_GIMBAL_SERVO        0
-/* 当前 PA2/PA3 用作 USART2 调试串口；本版不启用视觉通信。 */
-#define VISION_UART_USE_USART1         0
-
-/* 云台角度预留参数。当前 APP_ENABLE_GIMBAL_SERVO=0，不会输出舵机 PWM。 */
-#define GIMBAL_PAN_CENTER_DEG          90.0f
-#define GIMBAL_TILT_CENTER_DEG         90.0f
-#define GIMBAL_PAN_MIN_DEG             20.0f
-#define GIMBAL_PAN_MAX_DEG             160.0f
-#define GIMBAL_TILT_MIN_DEG            30.0f
-#define GIMBAL_TILT_MAX_DEG            150.0f
 
 #ifdef __cplusplus
 }

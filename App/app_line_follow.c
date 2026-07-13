@@ -44,19 +44,33 @@ static line_sensor_fault_t g_sensor_fault = LINE_SENSOR_FAULT_NONE;
 
 typedef enum
 {
+    /* 该枚举值直接作为遥测 TR 输出；保持已分配编号稳定，便于对照历史日志。 */
     LINE_TRANSITION_NONE = 0,
+    /* START 稳定期结束，开始普通循迹。 */
     LINE_TRANSITION_START_TO_FOLLOW = 1,
+    /* FOLLOW 检测到连续同向直角特征。 */
     LINE_TRANSITION_FOLLOW_TO_CORNER = 2,
+    /* FOLLOW 连续丢线，改为定向搜索。 */
     LINE_TRANSITION_FOLLOW_LOST_TO_BLIND = 3,
+    /* 转角达到编码器目标且已确认出口线。 */
     LINE_TRANSITION_CORNER_ENCODER_EXIT = 4,
+    /* 转角中重新稳定压到中心线。 */
     LINE_TRANSITION_CORNER_CENTER_EXIT = 5,
+    /* 未使用编码器时按固定转角时间退出。 */
     LINE_TRANSITION_CORNER_TIMEOUT_EXIT = 6,
+    /* 达到编码器目标后仍未找到出口线，转入搜索。 */
     LINE_TRANSITION_CORNER_TO_BLIND = 7,
+    /* 搜索时持续重新识别到线。 */
     LINE_TRANSITION_BLIND_REACQUIRE_TO_RECOVER = 8,
+    /* 搜索时间耗尽，停车等待。 */
     LINE_TRANSITION_BLIND_TIMEOUT_TO_LOST = 9,
+    /* 恢复阶段持续居中，回到正常循迹。 */
     LINE_TRANSITION_RECOVER_STABLE_TO_FOLLOW = 10,
+    /* 恢复阶段再次稳定丢线。 */
     LINE_TRANSITION_RECOVER_LOST_TO_BLIND = 11,
+    /* 停车等待时持续重新识别到线。 */
     LINE_TRANSITION_LOST_REACQUIRE_TO_RECOVER = 12,
+    /* 传感器健康检查判定硬件异常，进入安全停车路径。 */
     LINE_TRANSITION_SENSOR_FAULT_TO_LOST = 13
 } line_transition_reason_t;
 

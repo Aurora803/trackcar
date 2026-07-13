@@ -1,16 +1,18 @@
-# STM32 矩形循迹小车
+# 校赛独立运行版：STM32 矩形循迹小车
 
-基于 STM32F103C8T6 的矩形循迹小车工程，当前重点是保持矩形循迹、TB6612FNG 电机控制、8 路循迹输入和 USART2 调试输出稳定。工程已经整理为 `User / App / Components / BSP` 分层结构，后续再扩展速度闭环、OpenMV/OpenCV 视觉和云台打靶。
+本分支是校赛独立运行版的 STM32F103C8T6 底盘工程，负责矩形循迹、TB6612FNG 电机控制、8 路循迹输入，以及通过 USART2 连接 HC-05 完成启停和遥测。视觉侧是另一套独立控制器：OpenMV 独立识别红色色块并直接控制 MG996R 水平云台。STM32 与 OpenMV 之间没有 UART 或其他数据通信，任一控制器不应等待另一控制器的数据才能运行。
+
+当前仓库只包含 STM32 工程，**没有 OpenMV 程序目录或可验证的 OpenMV 脚本**。因此本文只记录 OpenMV 子系统的职责边界，不把其实现或实测状态写成已完成。
 
 ## 当前状态
 
-- 目标：低速稳定跑完整个矩形赛道，先不追求速度。
+- 校赛基线：`school-competition-line-v1` 已使用同一套参数连续完成 5 圈实车测试，循迹核心现已冻结。
 - 循迹：8 路循迹传感器 + 位置式 PID 差速。
 - 直角弯：默认固定左转，优先使用右编码器累计值退出直角。
 - 电机：TB6612FNG，TIM1 输出左右电机 PWM。
 - 编码器：右编码器 `RE` 当前有效；左编码器 `LE` 仍不稳定，暂不用于速度闭环。
 - 蓝牙控制：USART2 保持 9600 8N1；上电默认停车，收到 `START`/`1` 后启动，`STOP`/`0` 立即停车。
-- 视觉/云台：代码预留，默认关闭。
+- OpenMV 子系统：目标架构为独立完成红色色块识别并直接驱动一只 MG996R 做水平转动；不接入 STM32 数据链路。
 
 关键配置以 [`App/app_config.h`](App/app_config.h) 为准：
 
@@ -18,7 +20,7 @@
 #define RECT_DEFAULT_CORNER_DIR        (-1)
 #define RECT_ENABLE_CROSS_CORNER       1
 #define LINE_CORNER_USE_ENCODER        1
-#define LINE_CORNER_ENCODER_TARGET     550
+#define LINE_CORNER_ENCODER_TARGET     495
 #define LINE_CORNER_CENTER_ENABLE_ENCODER 500
 #define LINE_CORNER_DEBOUNCE_COUNT     6U
 #define LINE_CORNER_EXIT_CONFIRM_MS    30U
@@ -26,10 +28,24 @@
 #define LINE_BASE_PWM_MID              220
 #define LINE_BASE_PWM_SLOW             200
 #define LINE_RECOVER_PWM               200
-#define APP_ENABLE_VISION_TARGET       0
-#define APP_ENABLE_GIMBAL_SERVO        0
+#define LINE_RECOVER_CORRECTION_LIMIT  40
+#define LINE_RECOVER_CENTER_CONFIRM_MS 250U
+#define APP_CONTROL_PERIOD_MS          10U
 #define APP_ENABLE_BLUETOOTH_CONTROL   1
 ```
+
+## 独立运行边界
+
+```text
+STM32F103C8T6                       OpenMV（仓库外，程序缺失）
+  8 路循迹 -> 矩形循迹                 红色色块识别
+  编码器/TB6612 -> 左右电机             -> MG996R 水平云台
+  HC-05 <-> 启停命令/遥测
+
+                 无 UART、无数据通信
+```
+
+OpenMV 不向 STM32 发送目标坐标，STM32 也不控制 MG996R。本分支不预留 STM32 视觉协议、目标跟踪模式或二维云台控制链路。
 
 ## 工程结构
 
@@ -40,7 +56,6 @@ User/
 App/
   app_robot.c                 初始化、任务调度、模式切换
   app_line_follow.c           矩形循迹状态机
-  app_vision_target.c         视觉/云台预留
   app_config.h                当前跨层配置入口
 
 Components/
@@ -48,16 +63,13 @@ Components/
   tb6612_motor.c              TB6612FNG 方向和 PWM 适配
   yahboom_tracker8_io.c       8 路循迹输入和误差计算
   pid.c                       通用 PID
-  vision_protocol.c           视觉串口协议预留
-  gimbal_servo.c              云台舵机预留
 
 BSP/
   bsp_gpio.c                  公共 GPIO/LED
   bsp_pwm.c                   TIM1 PA8/PA9 电机 PWM
   bsp_encoder.c               TIM2/TIM4 编码器
-  bsp_uart.c                  USART2 调试输出
+  bsp_uart.c                  USART2 HC-05 控制与遥测
   bsp_systick.c               1 ms 系统节拍
-  bsp_servo.c                 舵机 PWM 预留
 ```
 
 ## 硬件配置
@@ -69,7 +81,7 @@ BSP/
 | 电机 PWM | TIM1_CH1 PA8 右电机，TIM1_CH2 PA9 左电机 |
 | 编码器 | TIM2 PA0/PA1 左编码器，TIM4 PB6/PB7 右编码器 |
 | 循迹传感器 | 8 路数字输入，X1 到 X8 |
-| 调试串口 | USART2 PA2/PA3，9600 8N1，TXE 中断队列发送 |
+| HC-05 串口 | USART2 PA2/PA3，9600 8N1，TXE 中断队列发送 |
 | 系统节拍 | SysTick 1 ms |
 
 完整引脚表见 [`pinmap.md`](pinmap.md)。
@@ -142,36 +154,35 @@ RAW=0x1C ERR=-133
 RAW=0x38 ERR=133
 ```
 
-## 调参建议
+## 冻结范围
 
-赛前优先只调整这些参数：
+校赛稳定版不再调整以下内容：
 
 ```c
 LINE_CORNER_ENCODER_TARGET
-LINE_CORNER_CENTER_ENABLE_ENCODER
-LINE_RECOVER_MS
-LINE_CORNER_DEBOUNCE_COUNT
-LINE_BASE_PWM_FAST
-LINE_BASE_PWM_MID
-LINE_BASE_PWM_SLOW
+LINE_RECOVER_CORRECTION_LIMIT
+LINE_RECOVER_PWM
+LINE_RECOVER_CENTER_CONFIRM_MS
+APP_CONTROL_PERIOD_MS
 ```
 
-不建议同时修改 PID、电机方向、PWM 通道、传感器权重和硬件映射。当前调参目标是低速稳定跑完矩形 2 到 3 圈。
+同时冻结 PID、状态机、电机方向、PWM 通道、传感器权重、编码器配置和硬件映射。历史 `450/550/600` 是已停用的实验值，不代表当前稳定配置。
 
 ## 已知问题
 
-1. 出弯后仍可能恢复不稳，容易进入 `BLIND -> LOST`。
-2. 左编码器 `LE` 暂不可靠，不能启用左右轮速度闭环。
+1. 个别角点后的恢复路径较长，`RECOVER` 可能短暂返回 `BLIND` 后再捕线。
+2. 左编码器 `LE` 历史观测不稳定，不能启用左右轮速度闭环。
 3. 当前是开环 PWM，左右电机实际速度可能不一致。
-4. 若 `S=3` 时 `SUM` 经常超过 1000 才退出，需要优先确认是否烧录了最新固件，以及编码器退出条件是否生效。
-5. 视觉和云台功能仍是预留状态，默认不参与主循环控制。
-6. 当前已增加直角出口连续确认和传感器极端状态诊断，但仍需用同一固件完成连续 3 圈实车验收。
+4. 完整 5 圈原始串口日志未保留，现有材料只有部分尾部状态；5 圈结论来自现场观察。
+5. 本仓库缺少 OpenMV 程序，红色色块识别和 MG996R 水平控制仍需在 OpenMV 侧单独提供和实测。
 
 ## 文档
 
 - [`docs/PLAN.md`](docs/PLAN.md)：当前项目计划与赛前收敛策略。
 - [`docs/RECTANGLE_TRACK.md`](docs/RECTANGLE_TRACK.md)：矩形循迹状态机、串口字段和失败链路。
 - [`docs/TUNING.md`](docs/TUNING.md)：调参记录与建议。
-- [`docs/VALIDATION.md`](docs/VALIDATION.md)：三圈实车、遥测和电气冻结验收清单。
+- [`docs/VALIDATION.md`](docs/VALIDATION.md)：冻结基线复测、遥测和电气验收清单。
+- [`docs/SCHOOL_COMPETITION_TEST_REPORT.md`](docs/SCHOOL_COMPETITION_TEST_REPORT.md)：连续 5 圈实车测试及证据边界。
 - [`pinmap.md`](pinmap.md)：当前硬件引脚映射。
+- [`docs/OPENMV_RPI_PROTOCOL.md`](docs/OPENMV_RPI_PROTOCOL.md)：仅供通信增强版参考，不属于本独立运行分支。
 - [`Project/README_Keil_EIDE.md`](Project/README_Keil_EIDE.md)：Keil / EIDE 导入说明。

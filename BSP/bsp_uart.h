@@ -3,9 +3,8 @@
  * @brief 串口底层接口。
  * @layer BSP
  *
- * 当前调试串口为 USART2(PA2/PA3)。TX 使用中断驱动环形缓冲，保持 9600
- * 波特率时也不会等待每个字符发送完成。视觉通信接口为后续预留，本版本
- * 临时复用同一串口，不代表调试和视觉已有独立硬件串口。
+ * 当前调试串口和 HC-05 链路为 USART2(PA2/PA3)。TX 使用中断驱动环形缓冲，
+ * 保持 9600 波特率时也不会等待每个字符发送完成。
  */
 #ifndef BSP_UART_H
 #define BSP_UART_H
@@ -50,14 +49,6 @@ void BSP_DebugUART_SendInt(const char *name, int32_t value);
 void BSP_UART1_SendChar(char ch);
 void BSP_UART1_SendString(const char *str);
 void BSP_UART1_SendInt(const char *name, int32_t value);
-
-/* 视觉通信抽象接口。本版先不启用视觉，接口临时复用 USART2 调试串口。 */
-void BSP_VisionUART_SendChar(char ch);
-void BSP_VisionUART_SendString(const char *str);
-/**
- * @brief 非阻塞读取一个视觉/USART2 接收缓冲字符。
- */
-int BSP_VisionUART_ReadCharNonBlocking(char *out_ch);
 
 /* 当前启用 USART2 中断，PA2/PA3 用作调试串口。 */
 /**

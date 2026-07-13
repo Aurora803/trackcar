@@ -17,16 +17,12 @@ typedef enum
 {
     /* 8 路红外循迹模式，由蓝牙 START/1 命令进入。 */
     ROBOT_MODE_LINE_FOLLOW = 0,
-    /* 视觉目标跟踪预留模式，当前默认配置不启用视觉/云台输出。 */
-    ROBOT_MODE_TARGET_TRACK,
-    /* Left/right wheel open-loop speed test demo. */
-    ROBOT_MODE_MOTOR_TEST,
     /* 停车模式，底盘空转停止。 */
-    ROBOT_MODE_STOP
+    ROBOT_MODE_STOP = 1
 } robot_mode_t;
 
 /**
- * @brief 初始化 BSP、底盘、循迹和可选视觉/云台模块。
+ * @brief 初始化 BSP、底盘和循迹模块。
  */
 void AppRobot_Init(void);
 

@@ -699,16 +699,6 @@
               <FileType>5</FileType>
               <FilePath>.\App\app_robot.h</FilePath>
             </File>
-            <File>
-              <FileName>app_vision_target.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\App\app_vision_target.c</FilePath>
-            </File>
-            <File>
-              <FileName>app_vision_target.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\App\app_vision_target.h</FilePath>
-            </File>
           </Files>
         </Group>
         <Group>
@@ -743,16 +733,6 @@
               <FileName>bsp_pwm.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\BSP\bsp_pwm.h</FilePath>
-            </File>
-            <File>
-              <FileName>bsp_servo.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\BSP\bsp_servo.c</FilePath>
-            </File>
-            <File>
-              <FileName>bsp_servo.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\BSP\bsp_servo.h</FilePath>
             </File>
             <File>
               <FileName>bsp_systick.c</FileName>
@@ -795,21 +775,6 @@
               <FilePath>.\Components\common_types.h</FilePath>
             </File>
             <File>
-              <FileName>gimbal_if.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Components\gimbal_if.h</FilePath>
-            </File>
-            <File>
-              <FileName>gimbal_servo.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Components\gimbal_servo.c</FilePath>
-            </File>
-            <File>
-              <FileName>gimbal_servo.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Components\gimbal_servo.h</FilePath>
-            </File>
-            <File>
               <FileName>motor_if.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\Components\motor_if.h</FilePath>
@@ -838,16 +803,6 @@
               <FileName>tracker8_if.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\Components\tracker8_if.h</FilePath>
-            </File>
-            <File>
-              <FileName>vision_protocol.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Components\vision_protocol.c</FilePath>
-            </File>
-            <File>
-              <FileName>vision_protocol.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Components\vision_protocol.h</FilePath>
             </File>
             <File>
               <FileName>yahboom_tracker8_io.c</FileName>

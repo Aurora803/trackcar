@@ -1,6 +1,6 @@
 # 矩形循迹说明
 
-本文记录当前矩形循迹的实际状态、串口字段含义和赛前调试重点。当前版本先不接 OpenMV / 树莓派视觉，底盘只做矩形循迹。
+本文记录校赛独立运行版 STM32 底盘的真实状态机和连续 5 圈实车结果。STM32 只负责底盘循迹和 HC-05 启停/遥测；OpenMV 作为另一控制器独立识别红色色块并直接控制 MG996R 水平云台，两者之间没有数据通信。当前仓库没有 OpenMV 程序目录，因此本文不描述或验证其实现。
 
 ## 1. 当前模式
 
@@ -20,7 +20,7 @@
 #define RECT_ENABLE_CROSS_CORNER       1
 
 #define LINE_CORNER_USE_ENCODER        1
-#define LINE_CORNER_ENCODER_TARGET     550
+#define LINE_CORNER_ENCODER_TARGET     495
 #define LINE_CORNER_CENTER_ENABLE_ENCODER 500
 #define LINE_CORNER_DEBOUNCE_COUNT     6U
 #define LINE_CORNER_EXIT_CONFIRM_MS    30U
@@ -29,6 +29,8 @@
 #define LINE_BASE_PWM_MID              220
 #define LINE_BASE_PWM_SLOW             200
 #define LINE_RECOVER_PWM               200
+#define LINE_RECOVER_CORRECTION_LIMIT  40
+#define LINE_RECOVER_CENTER_CONFIRM_MS 250U
 #define LINE_CORNER_INNER_PWM          60
 #define LINE_CORNER_OUTER_PWM          280
 #define LINE_CORNER_ALIGN_INNER_PWM    120
@@ -128,8 +130,8 @@ M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610 DT=10 OV=
 | `C` | 已完成直角弯次数 |
 | `DIR` | 当前直角方向，-1 左转，1 右转 |
 | `SUM` | 当前直角弯累计编码器计数 |
-| `DT` | 最近 500ms 内最大的控制调度间隔 |
-| `OV` | 最近 500ms 内控制间隔达到 20ms 的次数 |
+| `DT` | 最近 200ms 内最大的控制调度间隔 |
+| `OV` | 最近 200ms 内控制间隔达到 20ms 的次数 |
 | `F` | 传感器健康故障码：0正常，1全未触发超时，2全触发超时，3驱动无效 |
 | `TD` | USART2 TX 队列累计丢字节数 |
 
@@ -143,10 +145,11 @@ M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610 DT=10 OV=
 - 调度稳定：`DT` 应接近 10，`OV=0`；串口队列不溢出时 `TD=0`。
 - 传感器健康：正常跑道应保持 `F=0`；`F!=0` 时底盘进入 `LOST` 停车。
 
-## 6. 当前已知问题
+## 6. 连续 5 圈结果与限制
 
-1. 出弯后仍可能稳不住，第三个弯后容易进入 `BLIND -> LOST`。
-2. 右编码器 `RE` 可用，左编码器 `LE` 暂不可用。
-3. 当前不能做速度闭环，只能做开环低速循迹。
-4. 左右轮实际速度可能不一致，需要后续机械/电机补偿或闭环解决。
-5. 若悬空测试，`RAW=0xFF` 不一定代表跑道上异常；必须以贴近跑道高度测试为准。
+1. `LINE_CORNER_ENCODER_TARGET=495` 的同一套参数已现场连续完成 5 圈，全程未改参数。
+2. 角点后主要通过 `BLIND/RECOVER` 容错重新捕线；恢复路径偶尔较长，但满足校赛展示稳定性要求。
+3. 右编码器 `RE` 可用，左编码器 `LE` 历史观测不稳定，当前不用于速度闭环。
+4. 当前仍是开环 PWM，左右轮实际速度差未通过闭环消除。
+5. 完整 5 圈原始串口日志未保留，现有部分尾部记录不能证明每一个角点；连续 5 圈结论来自现场观察。
+6. 若悬空测试，`RAW=0xFF` 不一定代表跑道上异常；必须以贴近跑道高度测试为准。

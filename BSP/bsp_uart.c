@@ -1,6 +1,6 @@
 /**
  * @file bsp_uart.c
- * @brief USART2 调试串口和预留视觉串口接口。
+ * @brief USART2 调试串口与 HC-05 收发接口。
  * @layer BSP
  *
  * 当前 PA2/PA3 用作 USART2 调试口。printf/fputc 只把字节放入 TX 环形缓冲，
@@ -15,6 +15,10 @@
 #define UART2_RX_BUFFER_SIZE 128U
 #define UART2_TX_BUFFER_SIZE 256U
 
+/* head 仅由生产者推进，tail 仅由消费者推进。RX 的生产者是中断、
+ * 消费者是主循环；TX 则相反。每个缓冲始终保留一个空槽，用 head==tail
+ * 表示空，因此实际可容纳的字节数为 SIZE - 1。
+ */
 static volatile char g_uart2_rx_buffer[UART2_RX_BUFFER_SIZE];
 static volatile uint16_t g_uart2_rx_head = 0U;
 static volatile uint16_t g_uart2_rx_tail = 0U;
@@ -22,10 +26,6 @@ static volatile char g_uart2_tx_buffer[UART2_TX_BUFFER_SIZE];
 static volatile uint16_t g_uart2_tx_head = 0U;
 static volatile uint16_t g_uart2_tx_tail = 0U;
 static volatile uint32_t g_uart2_tx_dropped = 0U;
-
-#if VISION_UART_USE_USART1
-#error "VISION_UART_USE_USART1 is reserved: USART1_TX PA9 conflicts with TIM1_CH2 left motor PWM on current hardware."
-#endif
 
 /**
  * @brief 初始化 USART2 TX/RX GPIO。
@@ -103,6 +103,7 @@ static uint8_t uart2_tx_enqueue(char ch)
 
     if (next == g_uart2_tx_tail)
     {
+        /* 调试输出允许丢弃，绝不在这里等待硬件发送完成，以免影响控制周期。 */
         g_uart2_tx_dropped++;
         return 0U;
     }
@@ -172,23 +173,6 @@ void BSP_UART1_SendInt(const char *name, int32_t value)
 }
 
 /**
- * @brief 视觉串口发送字符预留接口。
- */
-void BSP_VisionUART_SendChar(char ch)
-{
-    /* 本版不启用独立视觉串口，接口临时复用 USART2 调试通道。 */
-    BSP_DebugUART_SendChar(ch);
-}
-
-/**
- * @brief 视觉串口发送字符串预留接口。
- */
-void BSP_VisionUART_SendString(const char *str)
-{
-    BSP_DebugUART_SendString(str);
-}
-
-/**
  * @brief 从 USART2 环形缓冲非阻塞读取一个字节。
  */
 int BSP_DebugUART_ReadCharNonBlocking(char *out_ch)
@@ -201,16 +185,9 @@ int BSP_DebugUART_ReadCharNonBlocking(char *out_ch)
     }
 
     *out_ch = g_uart2_rx_buffer[g_uart2_rx_tail];
+    /* 先读取当前槽位，再推进 tail，避免 ISR/主循环交错时跳过未读取字节。 */
     g_uart2_rx_tail = (uint16_t)((g_uart2_rx_tail + 1U) % UART2_RX_BUFFER_SIZE);
     return 1;
-}
-
-/**
- * @brief 视觉预留接口，当前复用 USART2/蓝牙接收缓冲。
- */
-int BSP_VisionUART_ReadCharNonBlocking(char *out_ch)
-{
-    return BSP_DebugUART_ReadCharNonBlocking(out_ch);
 }
 
 /**
@@ -230,6 +207,7 @@ void BSP_UART2_IRQHandler(void)
             g_uart2_rx_buffer[g_uart2_rx_head] = ch;
             g_uart2_rx_head = next;
         }
+        /* RX 满时直接丢弃新字节；控制命令很短，主循环应持续轮询以避免发生。 */
         USART_ClearITPendingBit(USART2, USART_IT_RXNE);
     }
 

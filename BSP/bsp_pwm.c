@@ -32,7 +32,10 @@ void BSP_PWM_MotorInit(void)
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOA, &gpio);
 
-    /* 72MHz / (71+1) = 1MHz；ARR=999 -> 1kHz PWM。 */
+    /* 72MHz / (71+1) = 1MHz；ARR=999 -> 1kHz PWM。
+     * 公式基于 SYS_CORE_CLOCK_HZ 与 TIM1 实际时钟一致；修改 RCC 分频时必须
+     * 一并检查此假设，否则 PWM 频率会偏离 MOTOR_PWM_FREQ_HZ。
+     */
     g_motor_pwm_period = (uint16_t)((SYS_CORE_CLOCK_HZ / 72U / MOTOR_PWM_FREQ_HZ) - 1U);
 
     tim.TIM_Prescaler = 71U;
@@ -71,6 +74,7 @@ void BSP_PWM_SetMotorDutyPermille(uint8_t channel, int16_t duty_permille)
     uint16_t pulse;
 
     duty_permille = clamp_i16(duty_permille, 0, 1000);
+    /* 使用 ARR+1 才能让 1000 permille 映射到完整周期，而非少一个计数。 */
     pulse = (uint16_t)(((uint32_t)duty_permille * (uint32_t)(g_motor_pwm_period + 1U)) / 1000U);
 
     if (channel == 1U)

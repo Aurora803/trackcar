@@ -80,8 +80,6 @@ virtualFolder:
         - path: App/app_line_follow.h
         - path: App/app_robot.c
         - path: App/app_robot.h
-        - path: App/app_vision_target.c
-        - path: App/app_vision_target.h
       folders: []
     - name: BSP
       files:
@@ -91,8 +89,6 @@ virtualFolder:
         - path: BSP/bsp_gpio.h
         - path: BSP/bsp_pwm.c
         - path: BSP/bsp_pwm.h
-        - path: BSP/bsp_servo.c
-        - path: BSP/bsp_servo.h
         - path: BSP/bsp_systick.c
         - path: BSP/bsp_systick.h
         - path: BSP/bsp_uart.c
@@ -103,17 +99,12 @@ virtualFolder:
         - path: Components/chassis.c
         - path: Components/chassis.h
         - path: Components/common_types.h
-        - path: Components/gimbal_if.h
-        - path: Components/gimbal_servo.c
-        - path: Components/gimbal_servo.h
         - path: Components/motor_if.h
         - path: Components/pid.c
         - path: Components/pid.h
         - path: Components/tb6612_motor.c
         - path: Components/tb6612_motor.h
         - path: Components/tracker8_if.h
-        - path: Components/vision_protocol.c
-        - path: Components/vision_protocol.h
         - path: Components/yahboom_tracker8_io.c
         - path: Components/yahboom_tracker8_io.h
       folders: []

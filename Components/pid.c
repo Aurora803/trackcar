@@ -48,7 +48,7 @@ void PID_Reset(pid_t *pid)
  * @brief 执行一次 PID 计算。
  *
  * 本函数不做任何硬件访问。调用者负责提供固定周期 dt_s，并把输出映射到
- * 电机、舵机或其他执行机构。
+ * 电机或其他执行机构。
  */
 float PID_Update(pid_t *pid, float setpoint, float measurement, float dt_s)
 {
@@ -63,11 +63,15 @@ float PID_Update(pid_t *pid, float setpoint, float measurement, float dt_s)
 
     error = setpoint - measurement;
 
+    /* 先按时间积分，再按配置截断。这里的积分限幅是基础 anti-windup：
+     * 即使执行机构或最终输出饱和，积分项也不会无限增长。
+     */
     pid->integral += error * dt_s;
     pid->integral = clamp_f32(pid->integral, pid->integral_min, pid->integral_max);
 
     if (pid->first_update)
     {
+        /* 首帧没有有效的前一误差，D 项置零可避免启动或状态切换时的尖峰。 */
         derivative = 0.0f;
         pid->first_update = 0U;
     }
@@ -76,6 +80,7 @@ float PID_Update(pid_t *pid, float setpoint, float measurement, float dt_s)
         derivative = (error - pid->prev_error) / dt_s;
     }
 
+    /* 输出限幅与积分限幅相互独立：前者保护执行机构，后者限制历史误差。 */
     output = pid->kp * error + pid->ki * pid->integral + pid->kd * derivative;
     output = clamp_f32(output, pid->out_min, pid->out_max);
 

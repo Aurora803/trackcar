@@ -1,5 +1,10 @@
 # Hardware TODO / Confirmation List
 
+Independent-version boundary: STM32 handles line following and HC-05 control/telemetry.
+OpenMV is a separate controller for red-blob detection and direct MG996R horizontal-servo
+control. There is no data link between the controllers. This repository currently contains
+no OpenMV program directory, so OpenMV behavior remains an external item to supply and test.
+
 Confirmed in this round:
 
 - MCU is STM32F103C8T6.
@@ -20,7 +25,8 @@ High-priority confirmations before ordering PCB:
 8. Confirm encoder power voltage and output type: push-pull, open-drain, Hall, optical, etc.
 9. Confirm right encoder direction reversal in code matches real wiring.
 10. Confirm PCB mechanical size, mounting hole positions, and connector directions.
-11. Confirm whether to reserve OpenMV/OpenCV or servo/gimbal headers in this revision.
+11. Confirm the separate OpenMV and MG996R power, mounting, range, and wiring; do not reserve
+    STM32 UART or servo/gimbal headers for them in the independent version.
 
 Assumptions used for the current draft:
 
@@ -34,10 +40,9 @@ Assumptions used for the current draft:
 Firmware follow-up items:
 
 1. USART2 `printf` now uses an interrupt-driven TX queue and keeps the Bluetooth link at
-   9600 baud with a 500ms telemetry period. Before adding more telemetry, monitor
+   9600 baud with a 200ms telemetry period. Before adding more telemetry, monitor
    `BSP_DebugUART_GetTxDroppedCount()` and keep the queue from overflowing.
 2. Bluetooth START/STOP commands cannot detect a wireless disconnect through UART alone.
    Add the module STATE pin or a heartbeat timeout if disconnect-to-stop is required.
-3. `BSP/bsp_servo.c` still contains a guarded placeholder for gimbal PWM. Do not enable
-   `APP_ENABLE_GIMBAL_SERVO` until stage D rewrites the servo PWM plan to TIM3 + PB4/PB5
-   or another non-conflicting output path.
+3. Obtain and version the actual OpenMV program before competition verification. Do not add
+   STM32 vision-protocol, target-tracking, or two-axis gimbal placeholders back to this branch.
