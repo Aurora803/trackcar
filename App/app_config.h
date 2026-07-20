@@ -26,8 +26,8 @@ extern "C" {
 #define APP_CONTROL_PERIOD_MS          10U
 /* 控制调度间隔达到该值时计为一次明显超时，并通过遥测 OV 字段报告。 */
 #define APP_CONTROL_OVERRUN_WARN_MS    20U
-/* 串口遥测周期，单位 ms。printf 使用中断 TX 队列；周期过短仍可能填满队列并丢字符。 */
-#define APP_TELEMETRY_PERIOD_MS        200U
+/* 串口遥测周期，单位 ms。9600 波特率下 300 ms 是降低 TX 队列拥塞的保守初值。 */
+#define APP_TELEMETRY_PERIOD_MS        300U
 /* 1: 每次状态真正变化时通过非阻塞调试串口输出一条 EV 诊断日志。 */
 #define LINE_ENABLE_TRANSITION_TRACE   1
 
@@ -116,12 +116,16 @@ extern "C" {
 /* 当前右编码器可用于固定左转退出，左编码器仍不稳定，暂不用于速度闭环。
  * 若右编码器失效，可临时改为 0 使用固定时间退出。
  */
-/* 1：直角弯优先按编码器累计退出；0：编码器未确认前按固定时间退出。 */
+/* 1：用编码器决定转弯阶段；0：用固定时间决定何时进入低速对线/搜索阶段。 */
 #define LINE_CORNER_USE_ENCODER        1
-/* LINE_CORNER_USE_ENCODER=0 时的直角弯定时退出时间，单位 ms，需要实车低速微调。 */
+/* LINE_CORNER_USE_ENCODER=0 时切入低速对线/搜索的时间，单位 ms，需要实车低速微调。 */
 #define LINE_CORNER_TIME_MS            520U
-#define LINE_CORNER_ENCODER_TARGET     495
-#define LINE_CORNER_CENTER_ENABLE_ENCODER 500  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
+/* 编码器直角参数均为初始值，需结合轮径、减速比、地面摩擦和电池电压实车标定。 */
+#define LINE_CORNER_CENTER_ENABLE_ENCODER 320  /* 达到该计数后才允许中心线作为成功候选。 */
+#define LINE_CORNER_ENCODER_TARGET     500  /* 达到该计数后切换低速对线，并启动中心搜索超时。 */
+#if LINE_CORNER_CENTER_ENABLE_ENCODER >= LINE_CORNER_ENCODER_TARGET
+#error "LINE_CORNER_CENTER_ENABLE_ENCODER must be less than LINE_CORNER_ENCODER_TARGET"
+#endif
 #define LINE_CORNER_CENTER_SEARCH_MS   220U
 #define LINE_CORNER_DEBOUNCE_COUNT     6U  /* 连续检测到同向直角特征后才切入转角状态。 */
 /* 编码器/中心线出口也要求连续多帧成立，避免单帧噪声提前退出直角。 */
@@ -129,9 +133,16 @@ extern "C" {
 #define LINE_CORNER_REARM_MS           700U
 #define LINE_CORNER_REARM_CENTER_MS    200U
 
-/* 传感器健康诊断：全触发通常表示短路/粘低，全未触发过久可能表示断线。 */
-#define TRACKER_ALL_ACTIVE_FAULT_MS    300U
-#define TRACKER_ALL_INACTIVE_FAULT_MS  2500U
+/* 一侧/另一侧触发数阈值是 1.8 cm 黑线的初始尝试值，需结合传感器高度和 RAW 日志实车标定。 */
+#define LINE_CORNER_SIDE_MIN_ACTIVE    3U
+#define LINE_CORNER_OTHER_MAX_ACTIVE   2U
+#if LINE_CORNER_SIDE_MIN_ACTIVE > 4U || LINE_CORNER_OTHER_MAX_ACTIVE > 4U
+#error "corner active-count thresholds must be in the range 0..4"
+#endif
+
+/* 全白/全黑持续时间只用于诊断计数，不能单独作为断线、短路或停车依据。 */
+#define TRACKER_ALL_ACTIVE_DIAG_MS     300U
+#define TRACKER_ALL_INACTIVE_DIAG_MS   2500U
 #define TRACKER_FAULT_CLEAR_MS         200U
 
 #define LINE_RECOVER_LOST_CONFIRM_MS 30U
@@ -139,6 +150,9 @@ extern "C" {
 
 #define LINE_RECOVER_CENTER_CONFIRM_MS  250U
 #define LINE_RECOVER_CENTER_ERROR_MAX    200
+
+/* 直角成功必须由 X4/X5 压线且误差不超过该值连续确认；初值需实车标定。 */
+#define LINE_CORNER_CENTER_ERROR_MAX     200
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   650

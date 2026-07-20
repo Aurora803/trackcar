@@ -24,7 +24,7 @@ typedef enum
     LINE_STATE_FOLLOW,
     /* 丢线搜索：按最后一次有效误差低速偏转找线，超时进入 LOST。 */
     LINE_STATE_BLIND,
-    /* 矩形直角：一侧低速一侧高速定量转弯，按时间或编码器/中心线退出。 */
+    /* 矩形直角：编码器/时间仅控制阶段，只有中心线稳定确认才能成功退出。 */
     LINE_STATE_CORNER,
     /* 找回后恢复：低速 PID 恢复一小段时间，再回 FOLLOW。 */
     LINE_STATE_RECOVER,
@@ -35,9 +35,8 @@ typedef enum
 typedef enum
 {
     LINE_SENSOR_FAULT_NONE = 0,
-    LINE_SENSOR_FAULT_ALL_INACTIVE,
-    LINE_SENSOR_FAULT_ALL_ACTIVE,
-    LINE_SENSOR_FAULT_DRIVER_INVALID
+    /* 保留数值 3 兼容既有 F 遥测；全白/全黑图样不属于硬故障。 */
+    LINE_SENSOR_FAULT_DRIVER_INVALID = 3
 } line_sensor_fault_t;
 
 typedef struct
@@ -55,7 +54,7 @@ typedef struct
     uint16_t corner_count;      /* completed 90-degree corners */
     /* 当前直角弯累计编码器计数；时间转弯模式下仍保留用于调试。 */
     uint16_t corner_encoder_sum;
-    /* 0 正常，1 长时间全未触发，2 长时间全触发，3 驱动报告无效。 */
+    /* 0 正常；3 表示底层驱动明确报告采样无效。 */
     line_sensor_fault_t sensor_fault;
     /* 当前状态已持续时间，单位 ms。 */
     uint32_t state_time_ms;
