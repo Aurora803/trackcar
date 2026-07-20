@@ -41,7 +41,7 @@ static inline int16_t clamp_i16(int32_t value, int16_t min_value, int16_t max_va
 }
 
 /**
- * @brief float 限幅，常用于 PID 输出、积分项和云台角度。
+ * @brief float 限幅，常用于 PID 输出和积分项。
  */
 static inline float clamp_f32(float value, float min_value, float max_value)
 {

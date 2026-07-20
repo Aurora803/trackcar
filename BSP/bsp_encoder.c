@@ -20,6 +20,9 @@ static void encoder_timer_init(TIM_TypeDef *timx)
 
     tb.TIM_Prescaler = 0U;
     tb.TIM_CounterMode = TIM_CounterMode_Up;
+    /* 16 位自由运行计数器。读取时转换为 int16_t，因而两次读取间的
+     * 实际位移必须小于 32768 个计数；当前 10 ms 控制周期远小于该上限。
+     */
     tb.TIM_Period = 0xFFFFU;
     tb.TIM_ClockDivision = TIM_CKD_DIV1;
     tb.TIM_RepetitionCounter = 0U;
@@ -34,6 +37,9 @@ static void encoder_timer_init(TIM_TypeDef *timx)
     ic.TIM_ICPolarity = TIM_ICPolarity_Rising;
     ic.TIM_ICSelection = TIM_ICSelection_DirectTI;
     ic.TIM_ICPrescaler = TIM_ICPSC_DIV1;
+    /* 数字滤波抑制电机噪声造成的毛刺；数值越大抗干扰越强，但会降低
+     * 高速边沿响应。此处对小车编码器取折中值。
+     */
     ic.TIM_ICFilter = 6U;
     TIM_ICInit(timx, &ic);
 
@@ -75,9 +81,13 @@ void BSP_Encoder_Init(void)
  */
 int16_t BSP_Encoder_ReadLeftDelta(void)
 {
+    /* 把 16 位补码计数直接转为 int16_t，可自然得到向后运动或回绕后的
+     * 有符号小增量；读取后立即清零，增量窗口由调用周期决定。
+     */
     int16_t delta = (int16_t)TIM_GetCounter(TIM2);
     TIM_SetCounter(TIM2, 0U);
 #if ENCODER_LEFT_INVERT
+    /* 软件反向仅统一“前进为正”的上层约定，不改变定时器的解码方向。 */
     delta = (int16_t)(-delta);
 #endif
     return delta;

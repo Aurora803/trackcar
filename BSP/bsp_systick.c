@@ -30,6 +30,9 @@ void BSP_SysTick_Inc(void)
  */
 uint32_t BSP_GetTickMs(void)
 {
+    /* Cortex-M3 对对齐的 32 位读写是原子的；tick 回绕交由调用方使用无符号
+     * 减法处理，因此此处不需要为了读取而关闭中断。
+     */
     return g_systick_ms;
 }
 
@@ -38,6 +41,9 @@ uint32_t BSP_GetTickMs(void)
  */
 void BSP_DelayMs(uint32_t ms)
 {
+    /* 仅适合上电自检等阻塞场景。若在主控制循环调用，会停止串口命令、
+     * 编码器采样和循迹状态机调度。
+     */
     uint32_t start = BSP_GetTickMs();
     while ((BSP_GetTickMs() - start) < ms)
     {

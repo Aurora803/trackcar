@@ -4,7 +4,7 @@
  * @layer App
  *
  * 本文件集中保存控制周期、串口波特率、电机 PWM 范围、编码器方向、
- * 8 路循迹权重、矩形赛道状态机参数、视觉/云台预留开关等配置。
+ * 8 路循迹权重和矩形赛道状态机参数等配置。
  * 虽然物理位置在 App 目录，但它当前实际承担跨层 Config 角色；
  * BSP/Components include 本文件只读取宏配置，不代表反向调用 App 业务逻辑。
  *
@@ -24,22 +24,18 @@ extern "C" {
 #define SYS_CORE_CLOCK_HZ              72000000UL
 /* 主控制周期，单位 ms。当前循迹状态机、编码器采样与未来速度闭环都按此周期调度。 */
 #define APP_CONTROL_PERIOD_MS          10U
-/* 串口遥测周期，单位 ms。当前 printf 为阻塞发送，周期过短会占用主循环时间。 */
-#define APP_TELEMETRY_PERIOD_MS        500U
-
-/* 1: boot into wheel speed test demo. Lift the car before flashing/running. */
-#define APP_ENABLE_MOTOR_SPEED_TEST_DEMO 0
-#define MOTOR_TEST_PWM                 260
-#define MOTOR_TEST_START_DELAY_MS      2000U
-#define MOTOR_TEST_RUN_MS              3000U
-#define MOTOR_TEST_STOP_MS             1000U
+/* 控制调度间隔达到该值时计为一次明显超时，并通过遥测 OV 字段报告。 */
+#define APP_CONTROL_OVERRUN_WARN_MS    20U
+/* 串口遥测周期，单位 ms。9600 波特率下 300 ms 是降低 TX 队列拥塞的保守初值。 */
+#define APP_TELEMETRY_PERIOD_MS        300U
+/* 1: 每次状态真正变化时通过非阻塞调试串口输出一条 EV 诊断日志。 */
+#define LINE_ENABLE_TRANSITION_TRACE   1
 
 /* ===================== 串口参数 ===================== */
 /* 当前调试口实际为 USART2(PA2/PA3)，保留 DEBUG 命名避免上层关心具体串口号。 */
 #define DEBUG_UART_BAUDRATE            9600U
-/* 视觉协议预留波特率；当前未分配独立视觉串口。 */
-#define VISION_UART_BAUDRATE           115200U
-
+/* 1：使用同一 USART2 蓝牙链路接收 START/STOP；启用后默认上电停车。 */
+#define APP_ENABLE_BLUETOOTH_CONTROL   1
 /* ===================== 电机与驱动参数 ===================== */
 /* TIM1 电机 PWM 频率。更改前需确认 TB6612、电机噪声和低速扭矩表现。 */
 #define MOTOR_PWM_FREQ_HZ              1000U
@@ -64,7 +60,7 @@ extern "C" {
 #define TB6612_BIN2_PORT               GPIOB
 #define TB6612_BIN2_PIN                GPIO_Pin_15
 
-/* PWM: TIM1_CH2 PA9 -> PWMA(左电机)，TIM1_CH1 PA8 -> PWMB(右电机)。不要与 USART1/云台 PWM 复用。 */
+/* PWM: TIM1_CH2 PA9 -> PWMA(左电机)，TIM1_CH1 PA8 -> PWMB(右电机)。不得复用这两个引脚。 */
 #define MOTOR_PWM_TIMER                TIM1
 #define MOTOR_LEFT_PWM_CHANNEL         2U
 #define MOTOR_RIGHT_PWM_CHANNEL        1U
@@ -117,35 +113,63 @@ extern "C" {
 #define LINE_CORNER_MIN_MS             260U
 /* CORNER 超时后退回 BLIND 找线。 */
 #define LINE_CORNER_TIMEOUT_MS         950U
-/* 当前你的串口 LE/RE/SUM 一直为 0，说明编码器反馈未通。
- * 先用定时直角弯跑通矩形；后续编码器修好后改成 1。
+/* 当前右编码器可用于固定左转退出，左编码器仍不稳定，暂不用于速度闭环。
+ * 若右编码器失效，可临时改为 0 使用固定时间退出。
  */
-/* 1：直角弯优先按编码器累计退出；0：编码器未确认前按固定时间退出。 */
+/* 1：用编码器决定转弯阶段；0：用固定时间决定何时进入低速对线/搜索阶段。 */
 #define LINE_CORNER_USE_ENCODER        1
-/* LINE_CORNER_USE_ENCODER=0 时的直角弯定时退出时间，单位 ms，需要实车低速微调。 */
+/* LINE_CORNER_USE_ENCODER=0 时切入低速对线/搜索的时间，单位 ms，需要实车低速微调。 */
 #define LINE_CORNER_TIME_MS            520U
-#define LINE_CORNER_ENCODER_TARGET     650
-#define LINE_CORNER_CENTER_ENABLE_ENCODER 500  /* 使用编码器退出时：至少转过这段计数后，才允许中心压线结束转角。 */
+/* 编码器直角参数均为初始值，需结合轮径、减速比、地面摩擦和电池电压实车标定。 */
+#define LINE_CORNER_CENTER_ENABLE_ENCODER 320  /* 达到该计数后才允许中心线作为成功候选。 */
+#define LINE_CORNER_ENCODER_TARGET     500  /* 达到该计数后切换低速对线，并启动中心搜索超时。 */
+#if LINE_CORNER_CENTER_ENABLE_ENCODER >= LINE_CORNER_ENCODER_TARGET
+#error "LINE_CORNER_CENTER_ENABLE_ENCODER must be less than LINE_CORNER_ENCODER_TARGET"
+#endif
 #define LINE_CORNER_CENTER_SEARCH_MS   220U
 #define LINE_CORNER_DEBOUNCE_COUNT     6U  /* 连续检测到同向直角特征后才切入转角状态。 */
+/* 编码器/中心线出口也要求连续多帧成立，避免单帧噪声提前退出直角。 */
+#define LINE_CORNER_EXIT_CONFIRM_MS    30U
 #define LINE_CORNER_REARM_MS           700U
 #define LINE_CORNER_REARM_CENTER_MS    200U
+
+/* 一侧/另一侧触发数阈值是 1.8 cm 黑线的初始尝试值，需结合传感器高度和 RAW 日志实车标定。 */
+#define LINE_CORNER_SIDE_MIN_ACTIVE    3U
+#define LINE_CORNER_OTHER_MAX_ACTIVE   2U
+#if LINE_CORNER_SIDE_MIN_ACTIVE > 4U || LINE_CORNER_OTHER_MAX_ACTIVE > 4U
+#error "corner active-count thresholds must be in the range 0..4"
+#endif
+
+/* 全白/全黑持续时间只用于诊断计数，不能单独作为断线、短路或停车依据。 */
+#define TRACKER_ALL_ACTIVE_DIAG_MS     300U
+#define TRACKER_ALL_INACTIVE_DIAG_MS   2500U
+#define TRACKER_FAULT_CLEAR_MS         200U
+
+#define LINE_RECOVER_LOST_CONFIRM_MS 30U
+#define LINE_RECOVER_LOST_PWM        170
+
+#define LINE_RECOVER_CENTER_CONFIRM_MS  250U
+#define LINE_RECOVER_CENTER_ERROR_MAX    200
+
+/* 直角成功必须由 X4/X5 压线且误差不超过该值连续确认；初值需实车标定。 */
+#define LINE_CORNER_CENTER_ERROR_MAX     200
 
 #define LINE_CORNER_ERROR_THRESHOLD    850
 #define LINE_RECOVER_ERROR_THRESHOLD   650
 
 /* 循迹基础 PWM：误差越小使用越快的档位，误差越大自动降速。 */
-#define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              230
+#define LINE_BASE_PWM_FAST             240
+#define LINE_BASE_PWM_MID              220
 #define LINE_BASE_PWM_SLOW             200
 /* 转弯恢复、丢线搜索、直角弯专用 PWM。方向和实际速度需要实车低速验证。 */
-#define LINE_RECOVER_PWM               220
+#define LINE_RECOVER_PWM               200
+#define LINE_RECOVER_CORRECTION_LIMIT  40
 #define LINE_BLIND_BASE_PWM            90
 #define LINE_BLIND_TURN_PWM            220
 #define LINE_CORNER_INNER_PWM          60
-#define LINE_CORNER_OUTER_PWM          320
+#define LINE_CORNER_OUTER_PWM          280
 #define LINE_CORNER_ALIGN_INNER_PWM    120
-#define LINE_CORNER_ALIGN_OUTER_PWM    220
+#define LINE_CORNER_ALIGN_OUTER_PWM    180
 
 /* 权重单位越大，转向响应越强。左负右正。 */
 #define TRACKER_WEIGHT_0               (-1200)
@@ -165,29 +189,13 @@ extern "C" {
 #define LINE_PWM_LIMIT                 380
 /* PID 输入是循迹位置误差，输出是左右轮差速修正量。KP 决定纠偏力度。 */
 #define LINE_PID_KP                    0.16f
-/* 当前保持 KI=0，相当于 PD 控制，避免积分在丢线或直角弯前后累积。 */
+/* 当前保持 KI=0，且 KD=0，因此实际为纯 P 控制。 */
 #define LINE_PID_KI                    0.00f
 /* KD 抑制蛇形摆动；过大可能放大传感器抖动。 */
 #define LINE_PID_KD                    0.000f
 /* PID 输出和积分项限幅，避免丢线/大误差时积分或差速过大。 */
 #define LINE_PID_OUT_LIMIT             160.0f
 #define LINE_PID_INTEGRAL_LIMIT        800.0f
-
-/* ===================== 视觉/云台预留 ===================== */
-/* 视觉目标跟踪应用开关。本轮保持 0，不调度视觉协议和云台目标控制。 */
-#define APP_ENABLE_VISION_TARGET       0
-/* 云台舵机 PWM 开关。本轮保持 0；启用前必须重新规划不冲突的 PWM 引脚。 */
-#define APP_ENABLE_GIMBAL_SERVO        0
-/* 当前 PA2/PA3 用作 USART2 调试串口；本版不启用视觉通信。 */
-#define VISION_UART_USE_USART1         0
-
-/* 云台角度预留参数。当前 APP_ENABLE_GIMBAL_SERVO=0，不会输出舵机 PWM。 */
-#define GIMBAL_PAN_CENTER_DEG          90.0f
-#define GIMBAL_TILT_CENTER_DEG         90.0f
-#define GIMBAL_PAN_MIN_DEG             20.0f
-#define GIMBAL_PAN_MAX_DEG             160.0f
-#define GIMBAL_TILT_MIN_DEG            30.0f
-#define GIMBAL_TILT_MAX_DEG            150.0f
 
 #ifdef __cplusplus
 }

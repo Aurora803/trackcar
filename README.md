@@ -1,149 +1,46 @@
-# STM32 矩形循迹小车
+# 校赛最终版：STM32F103 循迹小车
 
-基于 STM32F103C8T6 的矩形循迹小车工程，当前重点是保持矩形循迹、TB6612FNG 电机控制、8 路循迹输入和 USART2 调试输出稳定。工程已经整理为 `User / App / Components / BSP` 分层结构，后续再扩展速度闭环、OpenMV/OpenCV 视觉和云台打靶。
+本仓库冻结为校赛提交版本。主控为 STM32F103C8T6，完成 8 路循迹、TB6612FNG 双电机驱动、编码器采样，以及通过 HC-05（USART2）进行启动、停止和遥测。
 
-## 当前状态
-
-- 目标：低速稳定跑完整个矩形赛道，先不追求速度。
-- 循迹：8 路循迹传感器 + 位置式 PID 差速。
-- 直角弯：默认固定左转，优先使用右编码器累计值退出直角。
-- 电机：TB6612FNG，TIM1 输出左右电机 PWM。
-- 编码器：右编码器 `RE` 当前有效；左编码器 `LE` 仍不稳定，暂不用于速度闭环。
-- 视觉/云台：代码预留，默认关闭。
-
-关键配置以 [`App/app_config.h`](App/app_config.h) 为准：
-
-```c
-#define RECT_DEFAULT_CORNER_DIR        (-1)
-#define RECT_ENABLE_CROSS_CORNER       1
-#define LINE_CORNER_USE_ENCODER        1
-#define LINE_CORNER_ENCODER_TARGET     550
-#define LINE_BASE_PWM_FAST             260
-#define LINE_BASE_PWM_MID              230
-#define LINE_BASE_PWM_SLOW             200
-#define APP_ENABLE_VISION_TARGET       0
-#define APP_ENABLE_GIMBAL_SERVO        0
-```
+比赛期间请不要修改 `App/app_config.h` 中的循迹、转角和 PWM 参数；需要改动时，应先在副本中完成实车验证。
 
 ## 工程结构
 
 ```text
-User/
-  main.c                      启动层，只负责 AppRobot_Init / AppRobot_Task
-
-App/
-  app_robot.c                 初始化、任务调度、模式切换
-  app_line_follow.c           矩形循迹状态机
-  app_vision_target.c         视觉/云台预留
-  app_config.h                当前跨层配置入口
-
-Components/
-  chassis.c                   差速底盘抽象和安全限幅
-  tb6612_motor.c              TB6612FNG 方向和 PWM 适配
-  yahboom_tracker8_io.c       8 路循迹输入和误差计算
-  pid.c                       通用 PID
-  vision_protocol.c           视觉串口协议预留
-  gimbal_servo.c              云台舵机预留
-
-BSP/
-  bsp_gpio.c                  公共 GPIO/LED
-  bsp_pwm.c                   TIM1 PA8/PA9 电机 PWM
-  bsp_encoder.c               TIM2/TIM4 编码器
-  bsp_uart.c                  USART2 调试输出
-  bsp_systick.c               1 ms 系统节拍
-  bsp_servo.c                 舵机 PWM 预留
+User/        程序入口和中断处理
+App/         小车初始化、任务调度、循迹状态机和集中参数
+BSP/         GPIO、PWM、编码器、串口、SysTick 底层驱动
+Components/  底盘、电机、8 路循迹接口和 PID
+Library/     STM32F10x 标准外设库
+Start/       CMSIS、系统时钟和启动文件
+Project/     工程辅助目录
+docs/        接线图（仅保留此类文档）
 ```
 
-## 硬件配置
+接线以 [docs/PINMAP.md](docs/PINMAP.md) 为准。烧录口保留 `PA13/SWDIO`、`PA14/SWCLK`、`NRST` 和 GND。
 
-| 模块 | 当前配置 |
-|---|---|
-| MCU | STM32F103C8T6 |
-| 电机驱动 | TB6612FNG |
-| 电机 PWM | TIM1_CH1 PA8 右电机，TIM1_CH2 PA9 左电机 |
-| 编码器 | TIM2 PA0/PA1 左编码器，TIM4 PB6/PB7 右编码器 |
-| 循迹传感器 | 8 路数字输入，X1 到 X8 |
-| 调试串口 | USART2 PA2/PA3，9600 8N1 |
-| 系统节拍 | SysTick 1 ms |
+## 编译
 
-完整引脚表见 [`pinmap.md`](pinmap.md)。
+推荐使用 Keil MDK 打开 `project.uvprojx`，选择 `Target_1`，然后执行 **Rebuild**。
 
-## 构建与导入
+当前工程编译配置如下：
 
-### Keil MDK
+- 芯片：STM32F103C8（Cortex-M3），Flash 64 KB、RAM 20 KB。
+- 工具链：Arm Compiler 6（ArmClang）；工程使用 C99 和 GNU 扩展，优化等级为 2。
+- 预处理宏：`USE_STDPERIPH_DRIVER`；使用标准外设库时还必须选择中等密度器件宏 `STM32F10X_MD`。
+- 头文件目录：`Start`、`User`、`Library`、`App`、`BSP`、`Components`。
+- 启动文件：`Start/startup_stm32f10x_md.s`。
+- 构建产物：`Objects/project.axf` 和 `Objects/project.hex`。
 
-1. 打开或导入 `project.uvprojx`。
-2. 确认芯片为 STM32F103C8T6。
-3. Include 路径需要覆盖 `User`、`App`、`BSP`、`Components`、`Start`、`Library`。
-4. Define 至少包含 `USE_STDPERIPH_DRIVER`、`STM32F10X_MD`。
-5. 启动文件使用 `startup_stm32f10x_md.s`。
+如使用 GCC/EIDE 迁移，采用 `cortex-m3`、Thumb 指令集，并定义 `USE_STDPERIPH_DRIVER` 和 `STM32F10X_MD`；链接脚本使用 `STM32F103C8_FLASH.ld`。`Tools/Makefile.template` 可作为迁移参考，不能直接构建。
 
-### EIDE / VSCode
+## 烧录
 
-1. 使用 STM32F103C8T6 标准外设库工程。
-2. 加入 `User/App/BSP/Components/Start/Library` 相关源码和头文件路径。
-3. 若使用 ARM GCC，确认链接脚本为 STM32F103C8T6 的 64 KB Flash / 20 KB RAM 配置。
+1. 将 ST-Link 与开发板连接：`3.3V`、`GND`、`SWDIO(PA13)`、`SWCLK(PA14)`；建议同时连接 `NRST`。
+2. 确认 `BOOT0` 接地（从 Flash 启动），并为开发板供电。
+3. 在 Keil 中选择 ST-Link 调试/下载器，执行 **Flash → Download**；也可将 `Objects/project.hex` 导入 STM32CubeProgrammer，通过 SWD 写入。
+4. 上电后小车默认停车。HC-05 串口为 9600、8N1，发送 `1` 启动，发送 `0` 停止。
 
-更详细说明见 [`Project/README_Keil_EIDE.md`](Project/README_Keil_EIDE.md)。
+## 版本状态
 
-## 串口调试
-
-当前 USART2 遥测示例：
-
-```text
-M=0 S=1 RAW=0x18 ERR=0 LPWM=260 RPWM=260 LE=0 RE=90 C=1 DIR=-1 SUM=610
-```
-
-常用字段：
-
-| 字段 | 含义 |
-|---|---|
-| `M` | 当前模式，`0` 为循迹 |
-| `S` | 循迹状态机编号 |
-| `RAW` | 8 路循迹位，1 表示检测到黑线 |
-| `ERR` | 位置误差，左负右正 |
-| `LPWM/RPWM` | 左右轮 PWM 命令 |
-| `LE/RE` | 左右编码器在最近遥测周期内累计的增量 |
-| `C` | 已完成直角弯次数 |
-| `DIR` | 当前直角方向，`-1` 左转，`1` 右转 |
-| `SUM` | 当前直角弯累计编码器计数 |
-
-常见正常直线数据：
-
-```text
-RAW=0x18 ERR=0
-RAW=0x1C ERR=-133
-RAW=0x38 ERR=133
-```
-
-## 调参建议
-
-赛前优先只调整这些参数：
-
-```c
-LINE_CORNER_ENCODER_TARGET
-LINE_CORNER_CENTER_ENABLE_ENCODER
-LINE_RECOVER_MS
-LINE_CORNER_DEBOUNCE_COUNT
-LINE_BASE_PWM_FAST
-LINE_BASE_PWM_MID
-LINE_BASE_PWM_SLOW
-```
-
-不建议同时修改 PID、电机方向、PWM 通道、传感器权重和硬件映射。当前调参目标是低速稳定跑完矩形 2 到 3 圈。
-
-## 已知问题
-
-1. 出弯后仍可能恢复不稳，容易进入 `BLIND -> LOST`。
-2. 左编码器 `LE` 暂不可靠，不能启用左右轮速度闭环。
-3. 当前是开环 PWM，左右电机实际速度可能不一致。
-4. 若 `S=3` 时 `SUM` 经常超过 1000 才退出，需要优先确认是否烧录了最新固件，以及编码器退出条件是否生效。
-5. 视觉和云台功能仍是预留状态，默认不参与主循环控制。
-
-## 文档
-
-- [`docs/PLAN.md`](docs/PLAN.md)：当前项目计划与赛前收敛策略。
-- [`docs/RECTANGLE_TRACK.md`](docs/RECTANGLE_TRACK.md)：矩形循迹状态机、串口字段和失败链路。
-- [`docs/TUNING.md`](docs/TUNING.md)：调参记录与建议。
-- [`pinmap.md`](pinmap.md)：当前硬件引脚映射。
-- [`Project/README_Keil_EIDE.md`](Project/README_Keil_EIDE.md)：Keil / EIDE 导入说明。
+当前分支 `competition-independent-clean` 为校赛最终代码基线。历史标签 `school-competition-line-v1` 对应此前的循迹冻结点；本 README 和接线图是本次提交保留的唯一工程说明资料。

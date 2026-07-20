@@ -24,13 +24,20 @@ typedef enum
     LINE_STATE_FOLLOW,
     /* 丢线搜索：按最后一次有效误差低速偏转找线，超时进入 LOST。 */
     LINE_STATE_BLIND,
-    /* 矩形直角：一侧低速一侧高速定量转弯，按时间或编码器/中心线退出。 */
+    /* 矩形直角：编码器/时间仅控制阶段，只有中心线稳定确认才能成功退出。 */
     LINE_STATE_CORNER,
     /* 找回后恢复：低速 PID 恢复一小段时间，再回 FOLLOW。 */
     LINE_STATE_RECOVER,
     /* 长时间找不到线：停车等待连续重新看到线。 */
     LINE_STATE_LOST
 } line_follow_state_t;
+
+typedef enum
+{
+    LINE_SENSOR_FAULT_NONE = 0,
+    /* 保留数值 3 兼容既有 F 遥测；全白/全黑图样不属于硬故障。 */
+    LINE_SENSOR_FAULT_DRIVER_INVALID = 3
+} line_sensor_fault_t;
 
 typedef struct
 {
@@ -47,14 +54,39 @@ typedef struct
     uint16_t corner_count;      /* completed 90-degree corners */
     /* 当前直角弯累计编码器计数；时间转弯模式下仍保留用于调试。 */
     uint16_t corner_encoder_sum;
+    /* 0 正常；3 表示底层驱动明确报告采样无效。 */
+    line_sensor_fault_t sensor_fault;
     /* 当前状态已持续时间，单位 ms。 */
     uint32_t state_time_ms;
+
+    /* 直角检测是否已使能。 */
+    uint8_t corner_armed;
+
+    /* 直角重新使能的剩余冷却时间，单位 ms。 */
+    uint32_t corner_rearm_ms;
+
+    /* 中心稳定确认已经累计的时间，单位 ms。 */
+    uint32_t corner_rearm_center_ms;
+
+    /* RECOVER 中心稳定确认累计时间，单位 ms。 */
+    uint32_t recover_center_ms;
+
+    /* RECOVER 连续丢线确认累计时间，单位 ms。 */
+    uint32_t recover_lost_time_ms;
+
+    /* 最近一次状态转换原因，仅用于遥测诊断。 */
+    uint8_t transition_reason;
 } line_follow_debug_t;
 
 /**
  * @brief 初始化循迹控制器并绑定传感器驱动。
  */
 void AppLineFollow_Init(const tracker8_driver_t *tracker_driver);
+
+/**
+ * @brief 停车并把循迹状态机复位到 START，供蓝牙重新启动前调用。
+ */
+void AppLineFollow_Reset(void);
 
 /**
  * @brief 运行一次循迹状态机。

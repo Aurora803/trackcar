@@ -1,6 +1,6 @@
-# STM32F103C8T6 循迹小车接线图（矩形循迹版）
+# STM32F103C8T6 循迹小车接线图（校赛独立运行版）
 
-本文件按用户最新上传的接线图更新。当前目标：**只跑矩形循迹，不启用视觉/云台**。
+本文件只描述 STM32 底盘控制器：矩形循迹、TB6612FNG、电机编码器和 HC-05。OpenMV 是独立控制器，负责红色色块识别并直接控制 MG996R 水平云台；OpenMV 与 STM32 之间没有数据通信，也不占用下表中的 STM32 引脚。当前仓库没有 OpenMV 程序目录，其具体接线和实现不能由本仓库验证。
 
 ## 1. TB6612FNGVM 电机驱动
 
@@ -56,23 +56,24 @@ PWM 参数：TIM1，1 kHz，PSC=71，ARR=999，占空比 0~1000。
 
 默认黑线低电平有效：`TRACKER_BLACK_ACTIVE_LOW = 1`。
 
-## 4. 调试串口
+## 4. HC-05 控制与遥测串口
 
-| STM32 引脚 | 功能 | 连接 USB-TTL |
+| STM32 引脚 | 功能 | 连接 HC-05 |
 |---|---|---|
-| PA2 | USART2_TX | 接 USB-TTL RX |
-| PA3 | USART2_RX | 接 USB-TTL TX |
-| GND | GND | 接 USB-TTL GND |
+| PA2 | USART2_TX | 接 HC-05 RX |
+| PA3 | USART2_RX | 接 HC-05 TX |
+| GND | GND | 接 HC-05 GND |
 
 参数：9600，8N1，无流控。
 
-> PA2/PA3 也是后续 OpenMV/树莓派视觉串口最可能复用的位置。当前 STM32F103C8T6 接线下没有第二组不冲突的硬件 UART，调试 USB-TTL 和视觉主机不能同时独立占用 USART2。
+蓝牙控制命令：单字符 `1` 启动、`0` 停止；文本 `START/GO/STOP` 需要以 CR/LF
+结束。启用蓝牙控制后上电默认停车。USART2 无法直接感知无线链路断开状态。台架调试时可用 USB-TTL 替代 HC-05 连接该串口，但 OpenMV 不接入 USART2。
 
-## 5. 系统节拍与预留定时器
+## 5. 系统节拍与未使用外设
 
-当前控制节拍由 SysTick 提供：`SysTick_Handler()` 每 1 ms 调用 `BSP_SysTick_Inc()`，`AppRobot_Task()` 在主循环中按毫秒差值调度 10 ms 控制、50 ms 遥测和 500 ms LED。
+当前控制节拍由 SysTick 提供：`SysTick_Handler()` 每 1 ms 调用 `BSP_SysTick_Inc()`，`AppRobot_Task()` 在主循环中按毫秒差值调度 10 ms 控制、200 ms 遥测和 500 ms LED。USART2 保持 9600 8N1，遥测通过 TXE 中断队列发送，不阻塞主控制循环。
 
-TIM3 当前代码未占用。若后续要加二自由度舵机云台，优先评估 TIM3 部分重映射到 PB4/PB5；不要使用 PB0/PB1，因为它们已经接循迹 X4/X3。
+TIM3 当前代码未占用。本独立版不会把 TIM3 分配给云台；MG996R 的单轴水平控制由 OpenMV 直接完成。
 
 ## 6. 电源
 
@@ -82,14 +83,17 @@ TIM3 当前代码未占用。若后续要加二自由度舵机云台，优先评
 | 12V 电池正极 -> LM2596 IN+ | 降压输入 |
 | 电池负极 -> LM2596 IN- / TB6612 GND / STM32 GND | 所有 GND 必须共地 |
 | LM2596 5V -> STM32 5V | 给 BluePill/最小系统板供电 |
-| LM2596 5V -> 8 路循迹 VCC | 模块供电 |
+| 循迹模块 VCC | 尚未冻结；按模块规格选择 3.3V/5V，并确认输出不超过 MCU IO 电压 |
 | STM32 3.3V -> TB6612 VCC | TB6612 逻辑电源 |
 | STM32 3.3V -> TB6612 STBY | 固定使能 |
 
+> 循迹模块和编码器的实际供电、输出类型尚未完成硬件确认。没有确认电平兼容前，
+> 不要仅按旧接线图把 5V 数字输出直接接到 STM32 GPIO。
+
 ## 7. 引脚冲突提醒
 
-1. PA8/PA9 已用于 TIM1 电机 PWM，不能再作为 USART1 或云台 PWM。
+1. PA8/PA9 已用于 TIM1 电机 PWM，不能再作为 USART1 或其他 PWM 输出。
 2. PB0/PB1 已用于循迹 X4/X3，不能再作为 TIM3 电机 PWM。
-3. PA2/PA3 已用于 USART2 调试，不能再给循迹或视觉串口同时使用。
-4. PB4/PB5 当前可作为后续 TIM3_CH1/CH2 舵机 PWM 候选，但需要关闭 JTAG 并启用 TIM3 部分重映射。
-5. 先不启用视觉；后续加 OpenMV/树莓派时，需要重新规划串口或使用软件串口/外部扩展。
+3. PA2/PA3 已由 USART2 连接 HC-05，不能再同时分配给其他串口设备。
+4. PB4/PB5 当前未分配；本独立版不将其预留给 MG996R 或二维云台。
+5. 不要为 OpenMV 增加 STM32 信号线；两套控制器按无数据通信架构分别运行。
